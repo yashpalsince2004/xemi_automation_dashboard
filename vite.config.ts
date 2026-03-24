@@ -24,6 +24,7 @@ const autoRunPlugin = () => ({
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: '/Xemi_dashboard/',
   server: {
     host: "::",
     port: 8080,
