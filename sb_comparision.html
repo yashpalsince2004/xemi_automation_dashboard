@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SB Flat File Viewer – Side-by-Side Compare</title>
+<style>
+body{font-family:"Segoe UI",Arial;font-size:13px;background:#f8fafc;margin:12px}
+h3{margin-bottom:6px}
+.control-bar{
+  background:#fff;border:1px solid #e5e7eb;border-radius:6px;
+  padding:8px 10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center
+}
+button{border:none;padding:6px 14px;border-radius:4px;font-weight:600;cursor:pointer}
+#loadBtn{background:#2563eb;color:#fff}
+#exportBtn{background:#059669;color:#fff}
+.segment-header{
+  margin:8px 0;padding:6px 10px;
+  background:#ecfeff;border-left:4px solid #0891b2;font-weight:600
+}
+.table-wrap{max-height:70vh;overflow:auto;border:1px solid #e5e7eb;background:#fff}
+#grid{border-collapse:collapse;width:max-content}
+#grid th,#grid td{border:1px solid #d1d5db;padding:6px 8px;white-space:nowrap}
+#grid thead th{position:sticky;top:0;background:#f3f4f6;z-index:30}
+#grid th:first-child,#grid td:first-child{
+  position:sticky;left:0;background:#f9fafb;z-index:40;font-weight:600
+}
+.v-mandatory{background:#fecaca;color:#7f1d1d;font-weight:700}
+.v-type{background:#fed7aa;color:#7c2d12;font-weight:700}
+.v-length{background:#fef08a;color:#713f12;font-weight:700}
+.v-compare{background:#e9d5ff;font-weight:700}
+td[title]{cursor:help}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<h3>SB Flat File Viewer – Side-by-Side Compare</h3>
+<div class="control-bar">
+  <label>SB Tables Excel <input type="file" id="specFile" accept=".xlsx"></label>
+  <label>.sb File A <input type="file" id="sbFileA" accept=".sb"></label>
+  <label>.sb File B <input type="file" id="sbFileB" accept=".sb"></label>
+  <label>Section/Table
+    <select id="segmentSelect"></select>
+  </label>
+  <label><input type="checkbox" id="issueToggle"> Show issues only</label>
+  <button id="loadBtn">Compare</button>
+  <button id="exportBtn">Export Issues</button>
+</div>
+<div id="segmentHeader" class="segment-header"></div>
+<div class="table-wrap">
+<table id="grid">
+  <thead><tr id="gridHeader"></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+<script>
+const RS = String.fromCharCode(29);
+let showIssuesOnly = false;
+let sbSpecs = {};
+
+// Fields to skip on "Show issues only"
+const SKIP_ON_ISSUES_ONLY = [
+  "CUSTOM HOUSE CODE",
+  "JOB NUMBER",
+  "JOB DATE",
+  "SB NO",
+  "SB DATE",
+  "CHA LICENSE NUMBER",
+  "IMPORTER EXPORTER CODE",
+  "BRANCH SR NO OF EXPORTER",
+  "IMP. EXP. NAME",
+  "IMP. EXP. ADDRESS1",
+  "IMP. EXP. ADDRESS2",
+  "IMP. EXP. CITY",
+  "IMP. EXP. STATE",
+  "IMP. EXP. PIN"
+].map(x => x.toUpperCase());
+
+function skipCompare(field) {
+  // For "Show issues only", skip fields listed in SKIP_ON_ISSUES_ONLY
+  if (!field) return false;
+  if (showIssuesOnly && SKIP_ON_ISSUES_ONLY.includes(field.toString().trim().toUpperCase())) {
+    return true;
+  }
+  return false;
+}
+
+const SKIP_COMPARE_FIELDS = new Set([ // update this with any fields to always skip
+  "MESSAGE TYPE",
+  "CUSTOM HOUSE CODE",
+  "USER JOB NO.",
+  "USER JOB DATE"
+]);
+
+function shouldDisplayField(s) {
+  // Returns true if field should be shown (according to SKIP_COMPARE_FIELDS + showIssuesOnly)
+  if (!s || !s.cap) return false;
+  if (showIssuesOnly && SKIP_COMPARE_FIELDS.has(norm(s.cap).toUpperCase())) return false;
+  return true;
+}
+
+function norm(v){ return (v ?? "").toString().trim(); }
+function isNumber(v){ return /^-?\d+(\.\d+)?$/.test(v); }
+function validate(val, s) {
+  let e = [];
+  if(s && s.final==="M" && !val) e.push("Mandatory missing");
+  if(s && s.type==="N" && val && !isNumber(val)) e.push("Type mismatch");
+  if(s && s.len && val && val.length>s.len) e.push("Length exceeded");
+  return e;
+}
+function cell(val,s,cmp){
+  const td=document.createElement("td");
+  td.textContent=val;
+  const e=validate(val,s);
+  if(e.length){
+    td.classList.add(
+      e[0].includes("Mandatory")?"v-mandatory":
+      e[0].includes("Type")?"v-type":"v-length"
+    );
+    td.title=e.join(", ");
+  }
+  if(cmp) td.classList.add("v-compare");
+  return td;
+}
+// Normalize table name so ITEM and ITEMS both are recognized
+function normalizeTableName(name) {
+  name = name.trim().toUpperCase();
+  if (name === "ITEMS" || name === "ITEM") return "ITEM";
+  return name;
+}
+/* ---- LOAD TABLES EXCEL ---- */
+specFile.onchange = (e) => {
+  const r = new FileReader();
+  r.onload = (ev) => {
+    const wb = XLSX.read(ev.target.result, {type: "array"});
+    const segmentSelect = document.getElementById("segmentSelect");
+    segmentSelect.innerHTML = "";
+    sbSpecs = {};
+    wb.SheetNames.forEach(sh=>{
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1});
+      if(!rows.length) return;
+      // Guess columns: cap, type, len, final -- look for "Field", etc, in first row
+      let h = rows[0];
+      let colIndexes = {
+        cap: h.findIndex(v=>/field/i.test(v)),
+        type: h.findIndex(v=>/type/i.test(v)),
+        len: h.findIndex(v=>/length?/i.test(v)),
+        final: h.findIndex(v=>/mandatory|final/i.test(v)),
+      };
+      if (colIndexes.cap === -1) colIndexes.cap = 0;
+      if (colIndexes.type === -1) colIndexes.type = 1;
+      if (colIndexes.len === -1) colIndexes.len = 2;
+      if (colIndexes.final === -1) colIndexes.final = 3;
+      const fields = rows.slice(1).filter(r=>r && r.length).map(r=>({
+        cap: r[colIndexes.cap],
+        type: r[colIndexes.type],
+        len: r[colIndexes.len],
+        final: ("" + r[colIndexes.final]).toUpperCase().startsWith('M') ? "M" : ""
+      }));
+      sbSpecs[normalizeTableName(sh)] = fields;
+      // If the sheet is just "ITEMS" or "ITEM", register both
+      if (normalizeTableName(sh) === "ITEM") sbSpecs["ITEMS"] = fields;
+      if (normalizeTableName(sh) === "ITEMS") sbSpecs["ITEM"] = fields;
+      const o = document.createElement("option");
+      o.value = normalizeTableName(sh);
+      o.textContent = "<TABLE>"+sh.toUpperCase();
+      segmentSelect.appendChild(o);
+    });
+    // Consistency for ITEM/ITEMS
+    if (sbSpecs["ITEMS"] && !sbSpecs["ITEM"]) sbSpecs["ITEM"] = sbSpecs["ITEMS"];
+    if (sbSpecs["ITEM"] && !sbSpecs["ITEMS"]) sbSpecs["ITEMS"] = sbSpecs["ITEM"];
+  };
+  r.readAsArrayBuffer(e.target.files[0]);
+};
+/* ---- FLAT FILE PARSE ---- */
+function parseSbFlat(file, cb) {
+  const r = new FileReader();
+  r.onload = () => {
+    const lines = r.result.split(/\r?\n/);
+    const dataBySeg = {};
+    let currentSeg = null;
+    for(const line of lines){
+      const t = line.trim();
+      if (!t) continue;
+      if (t.startsWith('<TABLE>')) {
+        let segName = t.replace('<TABLE>','').trim().toUpperCase();
+        segName = normalizeTableName(segName);
+        currentSeg = segName;
+        if (!dataBySeg[currentSeg]) dataBySeg[currentSeg] = [];
+        continue;
+      }
+      if(currentSeg && !t.startsWith('<')){
+        let row = t.split(RS);
+
+// Ensure empty trailing fields are preserved
+const expectedLen = sbSpecs[currentSeg]?.length || row.length;
+
+while (row.length < expectedLen) {
+  row.push("");
+}
+
+dataBySeg[currentSeg].push(row);
+
+      }
+    }
+    // Additionally fill other, e.g., if only 'ITEM' present, set 'ITEMS'
+    if (dataBySeg["ITEM"] && !dataBySeg["ITEMS"]) dataBySeg["ITEMS"] = dataBySeg["ITEM"];
+    if (dataBySeg["ITEMS"] && !dataBySeg["ITEM"]) dataBySeg["ITEM"] = dataBySeg["ITEMS"];
+    cb(dataBySeg);
+  };
+  r.readAsText(file);
+}
+/* ---- EVENTS ---- */
+issueToggle.onchange = e => {
+  showIssuesOnly = e.target.checked;
+}
+loadBtn.onclick = () => {
+  const seg = normalizeTableName(document.getElementById("segmentSelect").value);
+  const sbA = document.getElementById("sbFileA").files[0];
+  const sbB = document.getElementById("sbFileB").files[0];
+  if(!seg || !sbA || !sbB){
+    alert("Please select table and both .sb files.");
+    return;
+  }
+  parseSbFlat(sbA, (dA)=>{
+    parseSbFlat(sbB, (dB)=>{
+      const rowsA = dA[seg]||[];
+      const rowsB = dB[seg]||[];
+      document.getElementById("segmentHeader").textContent = `Section ${seg} | A:${rowsA.length} | B:${rowsB.length}`;
+      renderSbGrid(seg, sbSpecs[seg], rowsA, rowsB);
+    });
+  });
+};
+/* ---- GRID / DRAW ---- */
+function renderSbGrid(segment, spec, rowsA, rowsB) {
+  const gridHeader = document.getElementById("gridHeader");
+  const tbody = document.getElementById("grid").querySelector("tbody");
+  gridHeader.innerHTML = "<th>Field</th>";
+  tbody.innerHTML = "";
+  const maxRows = Math.max(rowsA.length, rowsB.length);
+  for(let i=0; i<maxRows; i++) {
+    ["A","B"].forEach(p=>{
+      const th=document.createElement("th");
+      th.textContent = p + (i+1);
+      gridHeader.appendChild(th);
+    });
+  }
+  spec.forEach((s,idx)=>{
+    // --- SKIP FIELDS on showIssuesOnly ---
+    if(showIssuesOnly && SKIP_COMPARE_FIELDS.has(norm(s.cap).toUpperCase())) return;
+    // Normal: always show except showIssuesOnly mode and SKIP fields
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${s.cap}</td>`;
+    let show = false;
+    for(let i=0;i<maxRows;i++){
+      let va = rowsA[i]?.[idx] || "", vb = rowsB[i]?.[idx] || "";
+      const ca = cell(va,s, norm(va)!==norm(vb));
+      const cb = cell(vb,s, norm(va)!==norm(vb));
+      if(ca.className||cb.className) show = true;
+      tr.append(ca,cb);
+    }
+    if(!showIssuesOnly || show) tbody.appendChild(tr);
+  });
+}
+/* ---- EXPORT ---- */
+(function () {
+  // -- Helper: Normalize --
+  function norm(v) {
+    if (typeof v !== "undefined" && v !== null) return v.toString().replace(/\r?\n|\r/g, "").trim();
+    return "";
+  }
+function getValueBySpecPosition(row, position) {
+  if (!row) return "";
+  if (position >= row.length) return "";
+  return row[position] ?? "";
+}
+
+
+
+  // -- Persist comparison results from Compare into window for export reuse --
+  window._lastParsedA = {};
+  window._lastParsedB = {};
+  window._lastSpec = {};
+
+  // -- Overwrite Compare Click handler to store ALL compared data
+  loadBtn.onclick = () => {
+    const seg = normalizeTableName(document.getElementById("segmentSelect").value);  // -- Helper: Data Type Validation --
+  
+    const sbA = document.getElementById("sbFileA").files[0];
+    const sbB = document.getElementById("sbFileB").files[0];
+    if (!seg || !sbA || !sbB) {
+      alert("Please select table and both .sb files.");
+      return;
+    }
+    parseSbFlat(sbA, (dA) => {
+      parseSbFlat(sbB, (dB) => {
+        // Save all loaded segment data and specs for global export
+        window._lastParsedA = dA || {};
+        window._lastParsedB = dB || {};
+        window._lastSpec = sbSpecs || {};
+        const rowsA = dA[seg] || [];
+        const rowsB = dB[seg] || [];
+        document.getElementById("segmentHeader").textContent =
+          `Section ${seg} | A:${rowsA.length} | B:${rowsB.length}`;
+        renderSbGrid(seg, sbSpecs[seg], rowsA, rowsB);
+      });
+    });
+  };
+
+  // -- Table value lookup by field name (used for Invoice Sr, Item Sr etc.) --
+function getFieldValueByAliases(rows, spec, fieldAliases, rowIdx) {
+  for (let name of fieldAliases) {
+    let idx = spec.findIndex(
+      (s) => norm(s.cap).toLowerCase() === name.toLowerCase()
+    );
+    if (idx !== -1) {
+      const val = rows[rowIdx]?.[idx];
+      if (val) return val;
+    }
+  }
+  return "";
+}
+  // -- Determine the issue status. This logic should closely match the render logic!
+  function getDiffStatus(va, vb, s) {
+  const a = norm(va);
+  const b = norm(vb);
+
+  // 1️⃣ Mandatory (match UI logic exactly)
+  if (s.final === "M" && (!a || !b)) {
+    return "mandatory";
+  }
+
+  // 2️⃣ Type check
+  if (s.type === "N") {
+    if ((a && !isNumber(a)) || (b && !isNumber(b))) {
+      return "datatype";
+    }
+  }
+
+  // 3️⃣ Length check
+  if (s.len) {
+    if ((a && a.length > s.len) || (b && b.length > s.len)) {
+      return "length";
+    }
+  }
+
+  // 4️⃣ Compare difference (ONLY if not structural issue)
+  if (a !== b) {
+    return "compare";
+  }
+
+  return "";
+}
+
+
+  // -- Export Issues: Click handler
+
+const invoiceSrAliases = [
+  "Invoice Sr. Number",
+  "Invoice Serial No",
+  "Invoice Sr. No.",
+  "Invoice Serial No.",
+  "Inv Sr No"
+];
+
+const itemSrAliases = [
+  "Item Sr Number in Invoice",
+  "Item Serial No",
+  "Item Serial No.",
+  "Item Sr No",
+  "Item Serial No"
+];
+
+const serialNoAliases = [
+  "Serial No",
+  "Serial No",
+  "Sr No",
+  "Sl No"
+];
+
+  exportBtn.onclick = () => {
+    // Check comparison done first:
+    if (
+      !window._lastSpec ||
+      !window._lastParsedA ||
+      !window._lastParsedB ||
+      Object.keys(window._lastParsedA).length === 0 ||
+      Object.keys(window._lastParsedB).length === 0
+    ) {
+      alert("Please compare files first.");
+      return;
+    }
+
+    // For all segments present, collect differences
+    const exportColumns = [
+  "Segment",
+  "Field Name",
+  "Invoice Sr. Number",
+  "Item Sr Number in Invoice",
+  "Serial No",
+  "A Value",
+  "B Value",
+  "Status"
+];
+
+    const issueRows = [];
+    const segmentNames = Object.keys(window._lastSpec);
+
+    segmentNames.forEach(segment => {
+      const spec = window._lastSpec[segment];
+      const rowsA = window._lastParsedA[segment] || [];
+      const rowsB = window._lastParsedB[segment] || [];
+      const maxRows = Math.max(rowsA.length, rowsB.length);
+
+      for (let i = 0; i < maxRows; i++) {
+        spec.forEach((colSpec, idx) => {
+          const va = getValueBySpecPosition(rowsA[i], idx);
+const vb = getValueBySpecPosition(rowsB[i], idx);
+
+          const status = getDiffStatus(va, vb, colSpec);
+          if (!status && norm(va) === norm(vb)) return;
+
+
+          // Field lookups as requested
+	  const invoiceSrNumber =
+  getFieldValueByAliases(rowsA, spec, invoiceSrAliases, i) ||
+  getFieldValueByAliases(rowsB, spec, invoiceSrAliases, i);
+
+const itemSrNumber =
+  getFieldValueByAliases(rowsA, spec, itemSrAliases, i) ||
+  getFieldValueByAliases(rowsB, spec, itemSrAliases, i);
+
+const serialNo =
+  getFieldValueByAliases(rowsA, spec, serialNoAliases, i) ||
+  getFieldValueByAliases(rowsB, spec, serialNoAliases, i);
+
+
+          issueRows.push({
+  "Segment": segment,
+  "Field Name": colSpec.cap,
+  "Invoice Sr. Number": invoiceSrNumber,
+  "Item Sr Number in Invoice": itemSrNumber,
+  "Serial No": serialNo,
+  "A Value": va,
+  "B Value": vb,
+  "Status": status
+});
+
+        });
+      }
+    });
+
+    if (!issueRows.length) {
+      alert("No issues to export");
+      return;
+    }
+
+    // Export to Excel
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(issueRows, { header: exportColumns }),
+      "Comparison_Issues"
+    );
+    XLSX.writeFile(wb, "SB_Comparison_Issues_All_Segments.xlsx");
+  };
+})();
+
+
+</script>
+</body>
+</html>
