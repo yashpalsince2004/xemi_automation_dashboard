@@ -38,7 +38,22 @@ export default function DashboardHeader({ fileA, fileB, onUploadClick }: Props) 
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
               <Settings className="h-4 w-4" />
-              Automation <ChevronDown className="h-3 w-3 opacity-50" />
+              Import <ChevronDown className="h-3 w-3 opacity-50" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => {
+              toast.info('Import functionality coming soon...');
+            }}>Auto</DropdownMenuItem>
+            <DropdownMenuItem>Manual</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Settings className="h-4 w-4" />
+              Export <ChevronDown className="h-3 w-3 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

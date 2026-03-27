@@ -8,7 +8,7 @@ const autoRunPlugin = () => ({
   name: 'auto-run-plugin',
   configureServer(server: any) {
     server.middlewares.use('/api/run-auto', (req: any, res: any) => {
-      exec('node automation/cha_export.js', (err, stdout, stderr) => {
+      exec('node 03_cha_export.js', { cwd: path.resolve(__dirname, 'CHA_Export') }, (err, stdout, stderr) => {
         if (err) {
           console.error(err);
           res.statusCode = 500;
