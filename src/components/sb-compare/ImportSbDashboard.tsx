@@ -28,6 +28,7 @@ export default function ImportSbDashboard() {
   const [search, setSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [includeMandatory, setIncludeMandatory] = useState(true);
+  const [includeJobInfo, setIncludeJobInfo] = useState(true);
 
   const runComparison = async () => {
     setIsLoading(true);
@@ -50,13 +51,16 @@ export default function ImportSbDashboard() {
   };
 
   const processedResults = useMemo(() => {
-    if (includeMandatory) return results;
+    if (includeMandatory && includeJobInfo) return results;
 
     return results.map(res => {
       if (!res.mismatches) return res;
       
       const filteredMismatches = res.mismatches.filter(m => {
-        return m.issue?.toLowerCase() !== 'mandatory missing';
+        const fieldNorm = m.field?.trim().toLowerCase() || '';
+        if (!includeMandatory && m.issue?.toLowerCase() === 'mandatory missing') return false;
+        if (!includeJobInfo && (fieldNorm === 'job number' || fieldNorm === 'job date' || fieldNorm === 'job no' || fieldNorm === 'job no.')) return false;
+        return true;
       });
       
       if (filteredMismatches.length !== res.mismatches.length) {
@@ -79,7 +83,7 @@ export default function ImportSbDashboard() {
 
       return res;
     });
-  }, [results, includeMandatory]);
+  }, [results, includeMandatory, includeJobInfo]);
 
   const filteredResults = useMemo(() => {
     return processedResults.filter(r => r.fileName.toLowerCase().includes(search.toLowerCase()));
@@ -131,17 +135,29 @@ export default function ImportSbDashboard() {
       {results.length > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm mb-10">
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
               <h3 className="text-xl font-bold">File Reports</h3>
-              <div className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
-                <Switch 
-                  id="mandatory-mode" 
-                  checked={includeMandatory}
-                  onCheckedChange={setIncludeMandatory}
-                />
-                <Label htmlFor="mandatory-mode" className="text-sm font-medium cursor-pointer">
-                  Mandatory Fields
-                </Label>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
+                  <Switch 
+                    id="mandatory-mode" 
+                    checked={includeMandatory}
+                    onCheckedChange={setIncludeMandatory}
+                  />
+                  <Label htmlFor="mandatory-mode" className="text-sm font-medium cursor-pointer">
+                    Mandatory Fields
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
+                  <Switch 
+                    id="include-job-info" 
+                    checked={includeJobInfo}
+                    onCheckedChange={setIncludeJobInfo}
+                  />
+                  <Label htmlFor="include-job-info" className="text-sm font-medium cursor-pointer whitespace-nowrap">
+                    Job No/Date
+                  </Label>
+                </div>
               </div>
             </div>
             <div className="relative w-72">
@@ -179,9 +195,11 @@ export default function ImportSbDashboard() {
                   </div>
 
                   {/* Expanded Detail Pane */}
-                  {isExpanded && res.hasError && (
-                    <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 p-6 animate-slide-up">
-                      <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Mismatched Values</h4>
+                  {res.hasError && (
+                    <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                      <div className="overflow-hidden">
+                        <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 p-6">
+                          <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Mismatched Values</h4>
                       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
                         <table className="w-full text-sm text-left">
                           <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
@@ -211,6 +229,8 @@ export default function ImportSbDashboard() {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+                        </div>
                       </div>
                     </div>
                   )}

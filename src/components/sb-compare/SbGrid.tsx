@@ -7,9 +7,10 @@ interface Props {
   rowsA: string[][];
   rowsB: string[][];
   showIssuesOnly: boolean;
+  includeJobInfo?: boolean;
 }
 
-export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly }: Props) {
+export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobInfo = true }: Props) {
   const maxRows = Math.max(rowsA.length, rowsB.length);
 
   // Derive the table cells for each row/column
@@ -27,12 +28,26 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly }: Props) {
       let rowHasIssue = false;
       const cells = [];
       
+      let isJobInfo = false;
+      if (!includeJobInfo) {
+        const fieldNorm = cap.toLowerCase();
+        if (fieldNorm === 'job number' || fieldNorm === 'job date' || fieldNorm === 'job no' || fieldNorm === 'job no.') {
+          isJobInfo = true;
+        }
+      }
+
       for (let r = 0; r < maxRows; r++) {
         const va = rowsA[r]?.[c] ?? "";
         const vb = rowsB[r]?.[c] ?? "";
         
-        const status = getDiffStatus(va, vb, fieldSpec);
-        const hasDiff = status !== "" || norm(va) !== norm(vb);
+        let status = getDiffStatus(va, vb, fieldSpec);
+        let hasDiff = status !== "" || norm(va) !== norm(vb);
+
+        if (isJobInfo) {
+          status = "";
+          hasDiff = false;
+        }
+
         if (hasDiff) rowHasIssue = true;
         
         cells.push({ va, vb, status, diff: hasDiff });
@@ -45,7 +60,7 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly }: Props) {
       result.push({ cap, cells });
     }
     return result;
-  }, [spec, rowsA, rowsB, showIssuesOnly, maxRows]);
+  }, [spec, rowsA, rowsB, showIssuesOnly, includeJobInfo, maxRows]);
 
   const getCellClass = (status: string, diff: boolean) => {
     let base = "border border-border px-3 py-2 whitespace-nowrap text-sm ";

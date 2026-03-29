@@ -17,6 +17,7 @@ export default function SbComparison() {
   
   const [selectedSegment, setSelectedSegment] = useState<string>('');
   const [showIssuesOnly, setShowIssuesOnly] = useState(false);
+  const [includeJobInfo, setIncludeJobInfo] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleFilesLoaded = async (fileA: File, fileB: File) => {
@@ -107,9 +108,15 @@ export default function SbComparison() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center space-x-2 pt-4">
-            <Switch id="issues-only" checked={showIssuesOnly} onCheckedChange={setShowIssuesOnly} />
-            <Label htmlFor="issues-only" className="cursor-pointer">Show issues only</Label>
+          <div className="flex items-center space-x-6 pt-4">
+            <div className="flex items-center space-x-2">
+              <Switch id="issues-only" checked={showIssuesOnly} onCheckedChange={setShowIssuesOnly} />
+              <Label htmlFor="issues-only" className="cursor-pointer">Show issues only</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch id="include-job-info" checked={includeJobInfo} onCheckedChange={setIncludeJobInfo} />
+              <Label htmlFor="include-job-info" className="cursor-pointer">Job No/Date</Label>
+            </div>
           </div>
         </div>
 
@@ -134,6 +141,7 @@ export default function SbComparison() {
         rowsA={currentRowsA} 
         rowsB={currentRowsB} 
         showIssuesOnly={showIssuesOnly} 
+        includeJobInfo={includeJobInfo}
       />
     </div>
   );

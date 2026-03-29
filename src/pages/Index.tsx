@@ -53,13 +53,13 @@ export default function Index() {
 
         <Tabs defaultValue="generic" className="w-full">
           <TabsList className="grid w-full grid-cols-4 max-w-4xl mb-6 bg-slate-100/50 p-1 rounded-xl">
-            <TabsTrigger value="generic" className="rounded-lg">Generic Compare</TabsTrigger>
-            <TabsTrigger value="sb" className="rounded-lg">SB Flat File Compare</TabsTrigger>
-            <TabsTrigger value="bulk-sb" className="rounded-lg">Export Compare (500+)</TabsTrigger>
-            <TabsTrigger value="import-sb" className="rounded-lg" disabled>Import Compare (Coming Soon)</TabsTrigger>
+            <TabsTrigger value="generic" className="rounded-lg transition-all duration-300 active:scale-95 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">Generic Compare</TabsTrigger>
+            <TabsTrigger value="sb" className="rounded-lg transition-all duration-300 active:scale-95 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">SB Flat File Compare</TabsTrigger>
+            <TabsTrigger value="bulk-sb" className="rounded-lg transition-all duration-300 active:scale-95 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md">Export Compare (500+)</TabsTrigger>
+            <TabsTrigger value="import-sb" className="rounded-lg transition-all duration-300 active:scale-95 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md" disabled>Import Compare (Coming Soon)</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="generic" className="space-y-4">
+          <TabsContent value="generic" className="space-y-4 animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-500 ease-out fill-mode-both">
             {showUpload && (
               <div ref={uploadRef}>
                 <UploadZone onFilesLoaded={handleFilesLoaded} />
@@ -99,11 +99,11 @@ export default function Index() {
             )}
           </TabsContent>
 
-          <TabsContent value="sb">
+          <TabsContent value="sb" className="animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-500 ease-out fill-mode-both">
             <SbComparison />
           </TabsContent>
 
-          <TabsContent value="bulk-sb">
+          <TabsContent value="bulk-sb" className="animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-500 ease-out fill-mode-both">
             <ExportSbDashboard />
           </TabsContent>
         </Tabs>
