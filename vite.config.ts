@@ -8,7 +8,7 @@ const autoRunPlugin = () => ({
   name: 'auto-run-plugin',
   configureServer(server: any) {
     server.middlewares.use('/api/run-auto', (req: any, res: any) => {
-      exec('node 03_cha_export.js', { cwd: path.resolve(__dirname, 'CHA_Export') }, (err, stdout, stderr) => {
+      exec('node Auto_export_xl.js', { cwd: path.resolve(__dirname, 'CHA_Export') }, (err, stdout, stderr) => {
         if (err) {
           console.error(err);
           res.statusCode = 500;
@@ -22,7 +22,7 @@ const autoRunPlugin = () => ({
 
     server.middlewares.use('/api/bulk-compare', async (req: any, res: any) => {
       try {
-        const { compareBulk } = await import(path.resolve(__dirname, 'CHA_Export/05_bulk_sb_compare.js'));
+        const { compareBulk } = await import(path.resolve(__dirname, 'CHA_Export/SB_compare.js'));
         // Fallback to output_sb and input_sb or whatever defaults
         const dirA = path.resolve(__dirname, 'CHA_Export/input_sb');
         const dirB = path.resolve(__dirname, 'CHA_Export/output_sb');

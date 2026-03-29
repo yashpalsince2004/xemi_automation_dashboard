@@ -4,10 +4,10 @@
     "receiverID": "INBOM4",
     "indicator": "P",
     "messageID": "CACHE01",
-    "sequenceOrControlNumber": "180261",
-    "jobDate": "20260327",
+    "sequenceOrControlNumber": "185261",
+    "jobDate": "20260329",
     "messageType": "F",
-    "jobNumber": "180"
+    "jobNumber": "185"
   },
   "master": {
     "sbModel": [
