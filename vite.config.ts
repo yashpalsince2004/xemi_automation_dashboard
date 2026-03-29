@@ -19,6 +19,25 @@ const autoRunPlugin = () => ({
         res.end(JSON.stringify({ success: true, stdout }));
       });
     });
+
+    server.middlewares.use('/api/bulk-compare', async (req: any, res: any) => {
+      try {
+        const { compareBulk } = await import(path.resolve(__dirname, 'CHA_Export/05_bulk_sb_compare.js'));
+        // Fallback to output_sb and input_sb or whatever defaults
+        const dirA = path.resolve(__dirname, 'CHA_Export/input_sb');
+        const dirB = path.resolve(__dirname, 'CHA_Export/output_sb');
+        const specPath = path.resolve(__dirname, 'public/SB_Tables.xlsx');
+        
+        const results = await compareBulk(dirA, dirB, specPath);
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: true, data: results }));
+      } catch (err: any) {
+        console.error("Bulk Compare Error:", err);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
   }
 });
 

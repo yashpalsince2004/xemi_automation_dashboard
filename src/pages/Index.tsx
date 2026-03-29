@@ -9,6 +9,7 @@ import SummaryFunnel from '@/components/dashboard/SummaryFunnel';
 import DetailPanel from '@/components/dashboard/DetailPanel';
 import AnalyticsWidgets from '@/components/dashboard/AnalyticsWidgets';
 import SbComparison from '@/components/sb-compare/SbComparison';
+import ExportSbDashboard from '@/components/sb-compare/ExportSbDashboard';
 import type { ParsedFile } from '@/lib/fileParser';
 import type { ComparisonResult } from '@/lib/comparisonEngine';
 import { compareFiles } from '@/lib/comparisonEngine';
@@ -51,9 +52,11 @@ export default function Index() {
         />
 
         <Tabs defaultValue="generic" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-sm mb-6">
-            <TabsTrigger value="generic">Generic Compare</TabsTrigger>
-            <TabsTrigger value="sb">SB Flat File Compare</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4 max-w-4xl mb-6 bg-slate-100/50 p-1 rounded-xl">
+            <TabsTrigger value="generic" className="rounded-lg">Generic Compare</TabsTrigger>
+            <TabsTrigger value="sb" className="rounded-lg">SB Flat File Compare</TabsTrigger>
+            <TabsTrigger value="bulk-sb" className="rounded-lg">Export Compare (500+)</TabsTrigger>
+            <TabsTrigger value="import-sb" className="rounded-lg" disabled>Import Compare (Coming Soon)</TabsTrigger>
           </TabsList>
 
           <TabsContent value="generic" className="space-y-4">
@@ -98,6 +101,10 @@ export default function Index() {
 
           <TabsContent value="sb">
             <SbComparison />
+          </TabsContent>
+
+          <TabsContent value="bulk-sb">
+            <ExportSbDashboard />
           </TabsContent>
         </Tabs>
       </div>

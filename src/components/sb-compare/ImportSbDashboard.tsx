@@ -1,0 +1,231 @@
+import { useState, useMemo } from 'react';
+import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+
+interface Mismatch {
+  segment: string;
+  rowIdx: number;
+  field: string;
+  valA: string;
+  valB: string;
+  issue: string;
+}
+
+interface CompareResult {
+  fileName: string;
+  hasError: boolean;
+  summary: string;
+  mismatches: Mismatch[];
+}
+
+export default function ImportSbDashboard() {
+  const [results, setResults] = useState<CompareResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [includeMandatory, setIncludeMandatory] = useState(true);
+
+  const runComparison = async () => {
+    setIsLoading(true);
+    setResults([]);
+    try {
+      const res = await fetch('/api/bulk-compare');
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setResults(json.data);
+      toast.success(`Successfully compared ${json.data.length} files`);
+    } catch (err: any) {
+      toast.error('Failed to run import comparison: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleRow = (fileName: string) => {
+    setExpandedRows(prev => ({ ...prev, [fileName]: !prev[fileName] }));
+  };
+
+  const processedResults = useMemo(() => {
+    if (includeMandatory) return results;
+
+    return results.map(res => {
+      if (!res.mismatches) return res;
+      
+      const filteredMismatches = res.mismatches.filter(m => {
+        return m.issue?.toLowerCase() !== 'mandatory missing';
+      });
+      
+      if (filteredMismatches.length !== res.mismatches.length) {
+        const newHasError = filteredMismatches.length > 0 || (res.hasError && res.summary.toLowerCase().includes('missing file'));
+        
+        let newSummary = res.summary;
+        if (!newHasError) {
+          newSummary = 'Perfect Match';
+        } else if (newSummary.includes('mismatches found')) {
+          newSummary = `${filteredMismatches.length} mismatches found`;
+        }
+
+        return {
+          ...res,
+          mismatches: filteredMismatches,
+          hasError: newHasError,
+          summary: newSummary
+        };
+      }
+
+      return res;
+    });
+  }, [results, includeMandatory]);
+
+  const filteredResults = useMemo(() => {
+    return processedResults.filter(r => r.fileName.toLowerCase().includes(search.toLowerCase()));
+  }, [processedResults, search]);
+
+  const totalFiles = processedResults.length;
+  const errorFiles = processedResults.filter(r => r.hasError).length;
+  const matchFiles = totalFiles - errorFiles;
+
+  return (
+    <div className="flex flex-col gap-8 animate-fade-in font-sans pb-10">
+
+      {/* Zentra-styled Header & Metrics */}
+      <div className="bg-gradient-to-br from-white to-slate-50/50 dark:from-slate-900 dark:to-slate-800/50 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+        {/* Soft background glow */}
+        <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative flex flex-col md:flex-row items-center justify-between gap-6 mb-10">
+          <div>
+            <h2 className="text-3xl font-extrabold tracking-tight">Import Comparison</h2>
+            <p className="text-muted-foreground mt-1">Analyze up to 500 sets of shipping bills instantly.</p>
+          </div>
+          <Button onClick={runComparison} disabled={isLoading} size="lg" className="rounded-full px-8 gap-2 shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+            {isLoading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Play className="h-4 w-4" />}
+            {isLoading ? 'Processing...' : 'Run Import Comparison'}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm">
+            <p className="text-slate-500 text-sm font-medium mb-1">Total Files</p>
+            <p className="text-4xl font-bold tracking-tight text-slate-800 dark:text-slate-100">{totalFiles || '--'}</p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400" />
+            <p className="text-slate-500 text-sm font-medium mb-1">Perfect Matches</p>
+            <p className="text-4xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">{results.length ? matchFiles : '--'}</p>
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-2 h-full bg-rose-400" />
+            <p className="text-slate-500 text-sm font-medium mb-1">Differences Found</p>
+            <p className="text-4xl font-bold tracking-tight text-rose-600 dark:text-rose-400">{results.length ? errorFiles : '--'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Zentra-styled List Area */}
+      {results.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-200 dark:border-slate-800 shadow-sm mb-10">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-6">
+              <h3 className="text-xl font-bold">File Reports</h3>
+              <div className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
+                <Switch 
+                  id="mandatory-mode" 
+                  checked={includeMandatory}
+                  onCheckedChange={setIncludeMandatory}
+                />
+                <Label htmlFor="mandatory-mode" className="text-sm font-medium cursor-pointer">
+                  Mandatory Fields
+                </Label>
+              </div>
+            </div>
+            <div className="relative w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search files..."
+                className="pl-9 rounded-full bg-slate-50 border-slate-200 focus-visible:ring-primary/20"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {filteredResults.map((res) => {
+              const isExpanded = expandedRows[res.fileName];
+              return (
+                <div key={res.fileName} className={`flex flex-col transition-all duration-200 border rounded-2xl overflow-hidden ${isExpanded ? 'border-primary/20 shadow-md ring-1 ring-primary/10' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50'}`}>
+                  
+                  {/* Row Header */}
+                  <div 
+                    className="flex justify-between items-center p-4 cursor-pointer select-none bg-white dark:bg-slate-900" 
+                    onClick={() => toggleRow(res.fileName)}
+                  >
+                    <div className="flex items-center gap-4">
+                      {res.hasError ? <AlertCircle className="h-5 w-5 text-rose-500" /> : <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{res.fileName}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`text-sm font-medium px-3 py-1 rounded-full ${res.hasError ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10'}`}>
+                        {res.summary}
+                      </span>
+                      {res.hasError ? (isExpanded ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />) : <div className="w-5" />}
+                    </div>
+                  </div>
+
+                  {/* Expanded Detail Pane */}
+                  {isExpanded && res.hasError && (
+                    <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 p-6 animate-slide-up">
+                      <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Mismatched Values</h4>
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+                        <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Segment</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Row</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Field</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Value A</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Value B</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Issue</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {res.mismatches.map((m, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="px-4 py-2 font-mono text-xs">{m.segment}</td>
+                                <td className="px-4 py-2">{m.rowIdx}</td>
+                                <td className="px-4 py-2 font-medium">{m.field}</td>
+                                <td className="px-4 py-2 text-rose-600 bg-rose-50/30">{m.valA || '-'}</td>
+                                <td className="px-4 py-2 text-emerald-600 bg-emerald-50/30">{m.valB || '-'}</td>
+                                <td className="px-4 py-2">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 capitalize">
+                                    {m.issue}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              );
+            })}
+            {filteredResults.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                No files found matching your search.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
