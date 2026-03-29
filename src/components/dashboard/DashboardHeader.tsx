@@ -70,10 +70,6 @@ export default function DashboardHeader({ fileA, fileB, onUploadClick }: Props) 
             <DropdownMenuItem>Manual</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button onClick={onUploadClick} size="sm" className="gap-2">
-          <FileUp className="h-4 w-4" />
-          Upload Files
-        </Button>
       </div>
     </header>
   );
