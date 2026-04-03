@@ -2,32 +2,62 @@ import { useMemo } from 'react';
 import type { FieldSpec } from '@/lib/sbParser';
 import { getDiffStatus, norm, SKIP_COMPARE_FIELDS } from '@/lib/sbParser';
 
+// Currency field index in EXCHANGE table (position 6 in the flat file format)
+const CURRENCY_FIELD_INDEX = 6;
+
 interface Props {
   spec: FieldSpec[];
   rowsA: string[][];
   rowsB: string[][];
   showIssuesOnly: boolean;
   includeJobInfo?: boolean;
+  tableName: string;
 }
 
-export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobInfo = true }: Props) {
+export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobInfo = true, tableName }: Props) {
   const maxRows = Math.max(rowsA.length, rowsB.length);
+
+  // Filter out INR exchange rate rows if they only exist in golden file (File A)
+  // and not in generated file (File B) - this happens when golden has INR+USD but
+  // generated only has USD
+  const filteredRowsA = useMemo(() => {
+    // Only apply to EXCHANGE table
+    if (norm(tableName).toUpperCase() !== 'EXCHANGE') {
+      return rowsA;
+    }
+
+    // Check if File B has any INR rows
+    const hasInrInFileB = rowsB.some(rowB => {
+      const currency = rowB[CURRENCY_FIELD_INDEX] ?? "";
+      return norm(currency).toUpperCase() === 'INR';
+    });
+
+    if (hasInrInFileB) {
+      return rowsA;
+    }
+
+    // File B doesn't have INR - filter out INR rows from File A
+    return rowsA.filter(rowA => {
+      const currency = rowA[CURRENCY_FIELD_INDEX] ?? "";
+      return norm(currency).toUpperCase() !== 'INR';
+    });
+  }, [tableName, rowsA, rowsB]);
 
   // Derive the table cells for each row/column
   const gridRows = useMemo(() => {
     const result = [];
-    
+
     for (let c = 0; c < spec.length; c++) {
       const fieldSpec = spec[c];
       const cap = norm(fieldSpec.cap);
-      
+
       if (showIssuesOnly && SKIP_COMPARE_FIELDS.has(cap.toUpperCase())) {
         continue;
       }
-      
+
       let rowHasIssue = false;
       const cells = [];
-      
+
       let isJobInfo = false;
       if (!includeJobInfo) {
         const fieldNorm = cap.toLowerCase();
@@ -37,9 +67,9 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
       }
 
       for (let r = 0; r < maxRows; r++) {
-        const va = rowsA[r]?.[c] ?? "";
+        const va = filteredRowsA[r]?.[c] ?? "";
         const vb = rowsB[r]?.[c] ?? "";
-        
+
         let status = getDiffStatus(va, vb, fieldSpec);
         let hasDiff = status !== "" || norm(va) !== norm(vb);
 
@@ -49,18 +79,18 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
         }
 
         if (hasDiff) rowHasIssue = true;
-        
+
         cells.push({ va, vb, status, diff: hasDiff });
       }
-      
+
       if (showIssuesOnly && !rowHasIssue) {
         continue;
       }
-      
+
       result.push({ cap, cells });
     }
     return result;
-  }, [spec, rowsA, rowsB, showIssuesOnly, includeJobInfo, maxRows]);
+  }, [spec, filteredRowsA, rowsB, showIssuesOnly, includeJobInfo, maxRows]);
 
   const getCellClass = (status: string, diff: boolean) => {
     let base = "border border-border px-3 py-2 whitespace-nowrap text-sm ";

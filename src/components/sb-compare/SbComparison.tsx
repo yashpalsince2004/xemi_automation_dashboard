@@ -136,12 +136,13 @@ export default function SbComparison() {
         </h3>
       </div>
 
-      <SbGrid 
-        spec={currentSpec} 
-        rowsA={currentRowsA} 
-        rowsB={currentRowsB} 
-        showIssuesOnly={showIssuesOnly} 
+      <SbGrid
+        spec={currentSpec}
+        rowsA={currentRowsA}
+        rowsB={currentRowsB}
+        showIssuesOnly={showIssuesOnly}
         includeJobInfo={includeJobInfo}
+        tableName={selectedSegment}
       />
     </div>
   );
