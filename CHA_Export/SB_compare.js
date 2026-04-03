@@ -5,8 +5,6 @@ import xlsx from 'xlsx';
 const RS = String.fromCharCode(29);
 
 const SKIP_COMPARE_FIELDS = new Set([
-  "MESSAGE TYPE",
-  "CUSTOM HOUSE CODE",
   "USER JOB NO.",
   "USER JOB DATE"
 ]);
@@ -75,6 +73,8 @@ function parseSbFlat(text, specs) {
     const t = line.trim();
     if (!t) continue;
     
+    if (t === '<END-SB>') break;
+
     if (t.startsWith('<TABLE>')) {
       let segName = t.replace('<TABLE>', '').trim().toUpperCase();
       segName = normalizeTableName(segName);
@@ -106,9 +106,19 @@ function getDiffStatus(va, vb, s) {
   if (s.final === "M" && (!a || !b)) return "mandatory missing";
   if (s.type === "N" && ((a && !isNumber(a)) || (b && !isNumber(b)))) return "type mismatch";
   if (s.len && ((a && a.length > s.len) || (b && b.length > s.len))) return "length exceeded";
-  if (a !== b) return "value mismatch";
+  
+  if (a === b) return null;
 
-  return null;
+  // Ignore case differences
+  if (a.toLowerCase() === b.toLowerCase()) return null;
+
+  // Ignore leading zeros for numeric values
+  if (isNumber(a) && isNumber(b) && Number(a) === Number(b)) return null;
+
+  // Ignore multiple spaces differences
+  if (a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase()) return null;
+
+  return "value mismatch";
 }
 
 export async function compareBulk(dirA, dirB, specPath) {

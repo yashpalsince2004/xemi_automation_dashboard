@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# CHA Export automation
+.session_cookies.json
+error_log.txt
+missing_fields_log.json

@@ -1,10 +1,17 @@
 import { useState, useMemo } from 'react';
-import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Download, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { 
+  DropdownMenu, 
+  DropdownMenuTrigger, 
+  DropdownMenuContent, 
+  DropdownMenuCheckboxItem 
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 interface Mismatch {
   segment: string;
@@ -22,13 +29,48 @@ interface CompareResult {
   mismatches: Mismatch[];
 }
 
+const exportToExcel = (mismatches: Mismatch[], fileName: string) => {
+  const data = mismatches.map(m => ({
+    Segment: m.segment,
+    Row: m.rowIdx,
+    Field: m.field,
+    'Golden': m.valA,
+    'Generated': m.valB,
+    Issue: m.issue
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Mismatches');
+  XLSX.writeFile(wb, `${fileName.replace('.sb', '')}_mismatches.xlsx`);
+  toast.success('Exported mismatches to Excel');
+};
+
+const FILTER_OPTIONS = [
+  "Mandatory Fields",
+  "Job No/Date",
+  "CHA License Number",
+  "Importer Exporter Code",
+  "Imp. Exp. Name",
+  "Imp. Exp. Address1",
+  "Imp. Exp. Address2",
+  "Imp. Exp. City",
+  "Imp. Exp. State",
+  "Imp. Exp. PIN"
+];
+
 export default function ExportSbDashboard() {
   const [results, setResults] = useState<CompareResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [includeMandatory, setIncludeMandatory] = useState(true);
-  const [includeJobInfo, setIncludeJobInfo] = useState(true);
+  const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>(
+    FILTER_OPTIONS.reduce((acc, opt) => ({ ...acc, [opt]: false }), {})
+  );
+  const [tempFilters, setTempFilters] = useState<Record<string, boolean>>(
+    FILTER_OPTIONS.reduce((acc, opt) => ({ ...acc, [opt]: false }), {})
+  );
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const runComparison = async () => {
     setIsLoading(true);
@@ -51,15 +93,26 @@ export default function ExportSbDashboard() {
   };
 
   const processedResults = useMemo(() => {
-    if (includeMandatory && includeJobInfo) return results;
+    const hasDisabledFilter = Object.values(activeFilters).some(v => !v);
+    if (!hasDisabledFilter) return results;
 
     return results.map(res => {
       if (!res.mismatches) return res;
       
       const filteredMismatches = res.mismatches.filter(m => {
         const fieldNorm = m.field?.trim().toLowerCase() || '';
-        if (!includeMandatory && m.issue?.toLowerCase() === 'mandatory missing') return false;
-        if (!includeJobInfo && (fieldNorm === 'job number' || fieldNorm === 'job date' || fieldNorm === 'job no' || fieldNorm === 'job no.')) return false;
+        
+        if (!activeFilters['Mandatory Fields'] && m.issue?.toLowerCase() === 'mandatory missing') return false;
+        if (!activeFilters['Job No/Date'] && (fieldNorm === 'job number' || fieldNorm === 'job date' || fieldNorm === 'job no' || fieldNorm === 'job no.')) return false;
+        
+        for (const [filterName, isEnabled] of Object.entries(activeFilters)) {
+          if (filterName === 'Mandatory Fields' || filterName === 'Job No/Date') continue;
+          
+          if (!isEnabled && m.field?.trim().toLowerCase() === filterName.toLowerCase()) {
+            return false;
+          }
+        }
+        
         return true;
       });
       
@@ -83,7 +136,7 @@ export default function ExportSbDashboard() {
 
       return res;
     });
-  }, [results, includeMandatory, includeJobInfo]);
+  }, [results, activeFilters]);
 
   const filteredResults = useMemo(() => {
     return processedResults.filter(r => r.fileName.toLowerCase().includes(search.toLowerCase()));
@@ -138,26 +191,45 @@ export default function ExportSbDashboard() {
             <div className="flex items-center gap-4">
               <h3 className="text-xl font-bold">File Reports</h3>
               <div className="flex items-center gap-3">
-                <div className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
-                  <Switch 
-                    id="mandatory-mode" 
-                    checked={includeMandatory}
-                    onCheckedChange={setIncludeMandatory}
-                  />
-                  <Label htmlFor="mandatory-mode" className="text-sm font-medium cursor-pointer">
-                    Mandatory Fields
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
-                  <Switch 
-                    id="include-job-info" 
-                    checked={includeJobInfo}
-                    onCheckedChange={setIncludeJobInfo}
-                  />
-                  <Label htmlFor="include-job-info" className="text-sm font-medium cursor-pointer whitespace-nowrap">
-                    Job No/Date
-                  </Label>
-                </div>
+                <DropdownMenu 
+                  open={isFilterOpen} 
+                  onOpenChange={(open) => {
+                    if (open) setTempFilters(activeFilters);
+                    setIsFilterOpen(open);
+                  }}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="rounded-full h-9 px-4 gap-2 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-sm font-medium hover:bg-slate-100">
+                      <Filter className="h-4 w-4" />
+                      Field Filters
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64 p-2">
+                    <div className="max-h-[300px] overflow-y-auto pr-1">
+                      {FILTER_OPTIONS.map(opt => (
+                        <DropdownMenuCheckboxItem
+                          key={opt}
+                          checked={tempFilters[opt]}
+                          onSelect={(e) => e.preventDefault()}
+                          onCheckedChange={(checked) => setTempFilters(prev => ({ ...prev, [opt]: !!checked }))}
+                        >
+                          {opt}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </div>
+                    <div className="pt-2 mt-2 border-t flex justify-end">
+                      <Button 
+                        size="sm" 
+                        onClick={() => {
+                          setActiveFilters(tempFilters);
+                          setIsFilterOpen(false);
+                        }}
+                      >
+                        Apply Filters
+                      </Button>
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
             <div className="relative w-72">
@@ -199,7 +271,13 @@ export default function ExportSbDashboard() {
                     <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                       <div className="overflow-hidden">
                         <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 p-6">
-                          <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Mismatched Values</h4>
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Mismatched Values</h4>
+                            <Button onClick={() => exportToExcel(res.mismatches, res.fileName)} size="sm" variant="outline" className="gap-2">
+                              <Download className="h-4 w-4" />
+                              Export to Excel
+                            </Button>
+                          </div>
                       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
                         <table className="w-full text-sm text-left">
                           <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
@@ -207,8 +285,8 @@ export default function ExportSbDashboard() {
                               <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Segment</th>
                               <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Row</th>
                               <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Field</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Value A</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Value B</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Golden</th>
+                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Generated</th>
                               <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Issue</th>
                             </tr>
                           </thead>
