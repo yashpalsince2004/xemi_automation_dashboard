@@ -187,16 +187,27 @@ export async function compareBulk(dirA, dirB, specPath) {
     const segmentNames = Object.keys(specs);
     segmentNames.forEach(segment => {
       const spec = specs[segment];
-      const rowsA = parsedA[segment] || [];
-      const rowsB = parsedB[segment] || [];
+      let rowsA = parsedA[segment] || [];
+      let rowsB = parsedB[segment] || [];
+
+      if (norm(segment).toUpperCase() === 'EXCHANGE') {
+        let currencyIdx = spec.findIndex(s => norm(s.cap).toUpperCase().includes('CURRENCY'));
+        if (currencyIdx === -1) currencyIdx = 6;
+        rowsA = rowsA.filter(r => norm(r[currencyIdx] || "").toUpperCase() !== 'INR');
+        rowsB = rowsB.filter(r => norm(r[currencyIdx] || "").toUpperCase() !== 'INR');
+      }
+
       const maxRows = Math.max(rowsA.length, rowsB.length);
 
       for (let i = 0; i < maxRows; i++) {
+        const rowA = rowsA[i] || [];
+        const rowB = rowsB[i] || [];
+
         spec.forEach((colSpec, idx) => {
           if (SKIP_COMPARE_FIELDS.has(norm(colSpec.cap).toUpperCase())) return;
 
-          const va = rowsA[i]?.[idx] ?? "";
-          const vb = rowsB[i]?.[idx] ?? "";
+          const va = rowA[idx] ?? "";
+          const vb = rowB[idx] ?? "";
 
           const status = getDiffStatus(va, vb, colSpec);
           

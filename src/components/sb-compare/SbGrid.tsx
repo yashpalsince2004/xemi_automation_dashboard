@@ -13,35 +13,42 @@ interface Props {
   includeJobInfo?: boolean;
   tableName: string;
 }
-
 export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobInfo = true, tableName }: Props) {
-  const maxRows = Math.max(rowsA.length, rowsB.length);
-
-  // Filter out INR exchange rate rows if they only exist in golden file (File A)
-  // and not in generated file (File B) - this happens when golden has INR+USD but
-  // generated only has USD
+  // Filter exchange rate rows - we only want to compare USD with USD
+  // Skip INR rows in both files
   const filteredRowsA = useMemo(() => {
     // Only apply to EXCHANGE table
     if (norm(tableName).toUpperCase() !== 'EXCHANGE') {
       return rowsA;
     }
 
-    // Check if File B has any INR rows
-    const hasInrInFileB = rowsB.some(rowB => {
-      const currency = rowB[CURRENCY_FIELD_INDEX] ?? "";
-      return norm(currency).toUpperCase() === 'INR';
-    });
+    let currencyIdx = spec.findIndex(s => norm(s.cap).toUpperCase().includes('CURRENCY'));
+    if (currencyIdx === -1) currencyIdx = 6;
 
-    if (hasInrInFileB) {
-      return rowsA;
-    }
-
-    // File B doesn't have INR - filter out INR rows from File A
+    // Filter out rows that are INR
     return rowsA.filter(rowA => {
-      const currency = rowA[CURRENCY_FIELD_INDEX] ?? "";
+      const currency = rowA[currencyIdx] ?? "";
       return norm(currency).toUpperCase() !== 'INR';
     });
-  }, [tableName, rowsA, rowsB]);
+  }, [tableName, rowsA, spec]);
+
+  const filteredRowsB = useMemo(() => {
+    // Only apply to EXCHANGE table
+    if (norm(tableName).toUpperCase() !== 'EXCHANGE') {
+      return rowsB;
+    }
+
+    let currencyIdx = spec.findIndex(s => norm(s.cap).toUpperCase().includes('CURRENCY'));
+    if (currencyIdx === -1) currencyIdx = 6;
+
+    // Filter out rows that are INR
+    return rowsB.filter(rowB => {
+      const currency = rowB[currencyIdx] ?? "";
+      return norm(currency).toUpperCase() !== 'INR';
+    });
+  }, [tableName, rowsB, spec]);
+
+  const maxRows = Math.max(filteredRowsA.length, filteredRowsB.length);
 
   // Derive the table cells for each row/column
   const gridRows = useMemo(() => {
@@ -68,7 +75,7 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
 
       for (let r = 0; r < maxRows; r++) {
         const va = filteredRowsA[r]?.[c] ?? "";
-        const vb = rowsB[r]?.[c] ?? "";
+        const vb = filteredRowsB[r]?.[c] ?? "";
 
         let status = getDiffStatus(va, vb, fieldSpec);
         let hasDiff = status !== "" || norm(va) !== norm(vb);

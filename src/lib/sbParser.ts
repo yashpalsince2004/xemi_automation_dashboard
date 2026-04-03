@@ -201,34 +201,45 @@ export function generateExportIssues(
 
   segmentNames.forEach(segment => {
     const spec = specs[segment];
-    const rowsA = parsedA[segment] || [];
-    const rowsB = parsedB[segment] || [];
+    let rowsA = parsedA[segment] || [];
+    let rowsB = parsedB[segment] || [];
+
+    if (norm(segment).toUpperCase() === 'EXCHANGE') {
+      let currencyIdx = spec.findIndex(s => norm(s.cap).toUpperCase().includes('CURRENCY'));
+      if (currencyIdx === -1) currencyIdx = 6;
+      rowsA = rowsA.filter(r => norm(r[currencyIdx] ?? "").toUpperCase() !== 'INR');
+      rowsB = rowsB.filter(r => norm(r[currencyIdx] ?? "").toUpperCase() !== 'INR');
+    }
+
     const maxRows = Math.max(rowsA.length, rowsB.length);
 
     for (let i = 0; i < maxRows; i++) {
-      spec.forEach((colSpec, idx) => {
-        const va = rowsA[i]?.[idx] ?? "";
-        const vb = rowsB[i]?.[idx] ?? "";
+        const rowA = rowsA[i] || [];
+        const rowB = rowsB[i] || [];
 
-        const status = getDiffStatus(va, vb, colSpec);
-        if (!status && norm(va) === norm(vb)) return;
+        spec.forEach((colSpec, idx) => {
+          const va = rowA[idx] ?? "";
+          const vb = rowB[idx] ?? "";
 
-        const invoiceSrNumber = getFieldValueByAliases(rowsA, spec, invoiceSrAliases, i) || getFieldValueByAliases(rowsB, spec, invoiceSrAliases, i);
-        const itemSrNumber = getFieldValueByAliases(rowsA, spec, itemSrAliases, i) || getFieldValueByAliases(rowsB, spec, itemSrAliases, i);
-        const serialNo = getFieldValueByAliases(rowsA, spec, serialNoAliases, i) || getFieldValueByAliases(rowsB, spec, serialNoAliases, i);
+          const status = getDiffStatus(va, vb, colSpec);
+          if (!status && norm(va) === norm(vb)) return;
 
-        issueRows.push({
-          "Segment": segment,
-          "Field Name": colSpec.cap,
-          "Invoice Sr. Number": invoiceSrNumber,
-          "Item Sr Number in Invoice": itemSrNumber,
-          "Serial No": serialNo,
-          "A Value": va,
-          "B Value": vb,
-          "Status": status
+          const invoiceSrNumber = getFieldValueByAliases(rowsA, spec, invoiceSrAliases, i) || getFieldValueByAliases(rowsB, spec, invoiceSrAliases, i);
+          const itemSrNumber = getFieldValueByAliases(rowsA, spec, itemSrAliases, i) || getFieldValueByAliases(rowsB, spec, itemSrAliases, i);
+          const serialNo = getFieldValueByAliases(rowsA, spec, serialNoAliases, i) || getFieldValueByAliases(rowsB, spec, serialNoAliases, i);
+
+          issueRows.push({
+            "Segment": segment,
+            "Field Name": colSpec.cap,
+            "Invoice Sr. Number": invoiceSrNumber,
+            "Item Sr Number in Invoice": itemSrNumber,
+            "Serial No": serialNo,
+            "A Value": va,
+            "B Value": vb,
+            "Status": status
+          });
         });
-      });
-    }
+      }
   });
 
   if (!issueRows.length) {
