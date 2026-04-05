@@ -265,7 +265,7 @@
       "Unit": "KGS",
       "Qty": "10.000",
       "Per": "1",
-      "Unit_Price": "100.00000",
+      "Unit_Price": 200,
       "SQC_Quantity": "10.000000",
       "SQC_Unit": "KGS",
       "SKU_Part_No": "",
