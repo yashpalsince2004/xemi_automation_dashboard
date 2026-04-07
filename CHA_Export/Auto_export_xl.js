@@ -42,6 +42,12 @@ import {
   BatchLogger,
   ProgressBar,
 } from './utils.js';
+import {
+  initGoogleDrive,
+  fetchFilesFromGoogleDrive,
+  uploadFilesToGoogleDrive,
+  printSetupInstructions as printGoogleDriveSetup,
+} from './google_drive.js';
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -52,6 +58,11 @@ const CONFIG = {
   batchSize:     parseInt(process.env.BATCH_SIZE || '0', 10),
   headless:      process.env.HEADLESS === 'true',
   uploadWaitMs:  parseInt(process.env.UPLOAD_WAIT_MS || '60000', 10),
+
+  // Google Drive options (optional)
+  useGoogleDrive: process.env.USE_GOOGLE_DRIVE === 'true',
+  googleInputFolderId:  process.env.GOOGLE_INPUT_FOLDER_ID  || null,
+  googleOutputFolderId: process.env.GOOGLE_OUTPUT_FOLDER_ID || null,
 };
 
 // ─── Shared state ───────────────────────────────────────────────────────────
@@ -78,12 +89,26 @@ Usage:
   node Auto_export_xl.js --file=abc.xlsx   Single file mode
 
 Environment Variables:
-  BATCH_SIZE       Max files per run (0 = all)
-  INPUT_DIR        Input folder path (default: ./input_excel)
-  OUTPUT_SB_DIR    SB output folder (default: ./output_sb)
-  HEADLESS         Run headless browser (true/false)
-  UPLOAD_WAIT_MS   Pause after upload in ms (default: 60000)
+  BATCH_SIZE              Max files per run (0 = all)
+  INPUT_DIR               Input folder path (default: ./input_excel)
+  OUTPUT_SB_DIR           SB output folder (default: ./output_sb)
+  HEADLESS                Run headless browser (true/false)
+  UPLOAD_WAIT_MS          Pause after upload in ms (default: 60000)
+
+  Google Drive (optional):
+  USE_GOOGLE_DRIVE        Set to 'true' to use Google Drive (default: false)
+  GOOGLE_INPUT_FOLDER_ID  Google Drive folder ID for input files
+  GOOGLE_OUTPUT_FOLDER_ID Google Drive folder ID for .sb outputs
+  GOOGLE_CLIENT_ID        Google OAuth client ID
+  GOOGLE_CLIENT_SECRET    Google OAuth client secret
+
+Run 'node Auto_export_xl.js --google-setup' for Google Drive setup instructions.
     `);
+    process.exit(0);
+  }
+
+  if (process.argv.includes('--google-setup')) {
+    printGoogleDriveSetup();
     process.exit(0);
   }
 
@@ -93,13 +118,20 @@ Environment Variables:
 // ─── Input Handling ─────────────────────────────────────────────────────────
 
 /**
- * Read all valid Excel files from the input directory.
+ * Read all valid Excel files from the input directory or Google Drive.
  * Filters for .xls/.xlsx, sorts alphabetically.
  *
  * @param {string} inputDir - Path to the input directory.
  * @returns {string[]} Sorted list of Excel filenames.
  */
-function readInputFiles(inputDir) {
+async function readInputFiles(inputDir) {
+  // Check if Google Drive is enabled
+  if (CONFIG.useGoogleDrive && CONFIG.googleInputFolderId) {
+    console.log(`\n📂 Fetching Excel files from Google Drive...`);
+    return await fetchFilesFromGoogleDriveHelper();
+  }
+
+  // Local file system
   if (!fs.existsSync(inputDir)) {
     throw new Error(`Input directory does not exist: ${path.resolve(inputDir)}`);
   }
@@ -123,6 +155,34 @@ function readInputFiles(inputDir) {
   return files;
 }
 
+/**
+ * Fetch files from Google Drive using the GoogleDriveClient.
+ * @returns {Promise<Array>} Array of file objects with metadata
+ */
+async function fetchFilesFromGoogleDriveHelper() {
+  const { initGoogleDrive, fetchFilesFromGoogleDrive } = await import('./google_drive.js');
+  const driveClient = await initGoogleDrive();
+  const tempDir = path.join(process.cwd(), CONFIG.inputDir);
+
+  // Create local temp directory
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+
+  const files = await fetchFilesFromGoogleDrive(
+    driveClient,
+    CONFIG.googleInputFolderId,
+    tempDir
+  );
+
+  return files.map(f => ({
+    fileName: f.fileName,
+    localPath: f.localPath,
+    driveId: f.driveId,
+    isFromGoogleDrive: true,
+  }));
+}
+
 // ─── Per-File Processing ────────────────────────────────────────────────────
 
 /**
@@ -132,13 +192,18 @@ function readInputFiles(inputDir) {
  * (e.g., missing mode selector) skips only that step, not the entire file.
  *
  * @param {import('playwright').Page} page
- * @param {string} fileName - Excel filename (e.g., "abc.xlsx")
+ * @param {string|object} fileEntry - Excel filename or file object with metadata
  * @param {object} config   - Configuration object
  * @returns {Promise<{success: boolean, error?: string, missingFields?: number}>}
  */
-async function processFile(page, fileName, config) {
+async function processFile(page, fileEntry, config) {
+  // Handle both local file string and Google Drive file object
+  const fileName = typeof fileEntry === 'string' ? fileEntry : fileEntry.fileName;
+  const excelPath = typeof fileEntry === 'string'
+    ? path.join(config.inputDir, fileName)
+    : fileEntry.localPath;
   const baseName = path.basename(fileName, path.extname(fileName));
-  const excelPath = path.join(config.inputDir, fileName);
+
   let stepErrors = [];
 
   // ── Step 1: Convert Excel → JSON ──────────────────────────────────────
@@ -165,6 +230,12 @@ async function processFile(page, fileName, config) {
 
   // ── Step 3: Process each row (job) ────────────────────────────────────
   for (const row of rows) {
+    // ── Pre-check: Skip empty rows silently ──────────────────────────
+    const hasData = Object.entries(row).some(([key, val]) => 
+      !key.startsWith('__') && val !== undefined && val !== null && String(val).trim() !== ''
+    );
+    if (!hasData) continue;
+
     // ── Validate required fields using FieldValidator ────────────────
     const exporter = fieldValidator.check(fileName, row, 'Exporter Name', [
       'Exporter Name', 'Exporter', 'Exporter_Name',
@@ -258,18 +329,12 @@ async function processFile(page, fileName, config) {
         await page.waitForSelector('text="Browse Files"', { state: 'visible', timeout: 5000 });
 
         const fileInput = page.locator('input[type="file"]');
-        let uploadFilePath = path.join(process.cwd(), config.inputDir, fileName);
-
-        if (!fs.existsSync(uploadFilePath)) {
-          const altExt = path.extname(fileName) === '.xlsx' ? '.xls' : '.xlsx';
-          uploadFilePath = path.join(process.cwd(), config.inputDir, baseName + altExt);
+        // Use the pre-computed excelPath which handles both local and Google Drive files
+        if (!fs.existsSync(excelPath)) {
+          throw new Error(`Upload file not found: ${excelPath}`);
         }
 
-        if (!fs.existsSync(uploadFilePath)) {
-          throw new Error(`Upload file not found: ${uploadFilePath}`);
-        }
-
-        await fileInput.setInputFiles(uploadFilePath);
+        await fileInput.setInputFiles(excelPath);
         await page.waitForTimeout(1000);
 
         const confirmUpload = page.getByRole('button', { name: 'Upload', exact: true });
@@ -380,7 +445,8 @@ async function processFile(page, fileName, config) {
 
     // ── Download Outputs ─────────────────────────────────────────────
     try {
-      await generateOutputs(page, baseName, config);
+      const fileInfo = typeof fileEntry === 'object' ? fileEntry : null;
+      await generateOutputs(page, baseName, config, fileInfo);
     } catch (err) {
       stepErrors.push(`Output download failed: ${err.message}`);
       console.error(`    ⚠️ Output download error: ${err.message}`);
@@ -409,17 +475,22 @@ async function processFile(page, fileName, config) {
 
 /**
  * Download the .sb flat file from the Review page.
- * Wrapped in retry for transient download failures.
+ * Optionally upload to Google Drive if configured.
  *
  * @param {import('playwright').Page} page
  * @param {string} baseName - File base name (no extension)
  * @param {object} config   - Configuration object
+ * @param {object} fileInfo - File info object (optional, for Google Drive files)
+ * @returns {Promise<{downloadPath?: string, uploadResult?: object}>}
  */
-async function generateOutputs(page, baseName, config) {
+async function generateOutputs(page, baseName, config, fileInfo = null) {
   // Ensure output directory exists
   if (!fs.existsSync(config.outputSbDir)) {
     fs.mkdirSync(config.outputSbDir, { recursive: true });
   }
+
+  let downloadPath = null;
+  let uploadResult = null;
 
   // ── Download .sb ───────────────────────────────────────────────────
   await page.waitForTimeout(1000);
@@ -448,13 +519,28 @@ async function generateOutputs(page, baseName, config) {
       }
 
       const sbDownload = await sbDownloadPromise;
-      const downloadPath = path.join(config.outputSbDir, `x${baseName}.sb`);
+      downloadPath = path.join(config.outputSbDir, `x${baseName}.sb`);
       await sbDownload.saveAs(downloadPath);
-      console.log(`    ✅ SB saved: ${downloadPath}`);
+      console.log(`    ✅ SB saved locally: ${downloadPath}`);
     }, { retries: 2, label: 'SB download' });
   } catch (err) {
     console.log(`    ⚠️ SB download failed: ${err.message}`);
   }
+
+  // ── Upload to Google Drive if configured ───────────────────────────
+  if (config.useGoogleDrive && config.googleOutputFolderId && downloadPath && fs.existsSync(downloadPath)) {
+    console.log('    📤 Uploading .sb to Google Drive...');
+    try {
+      const { initGoogleDrive, uploadFilesToGoogleDrive } = await import('./google_drive.js');
+      const driveClient = await initGoogleDrive();
+      const uploadedFiles = await uploadFilesToGoogleDrive(driveClient, config.googleOutputFolderId, config.outputSbDir);
+      uploadResult = uploadedFiles.find(f => path.basename(f.driveId) === path.basename(downloadPath)) || uploadedFiles[0];
+    } catch (err) {
+      console.log(`    ⚠️ Google Drive upload failed: ${err.message}`);
+    }
+  }
+
+  return { downloadPath, uploadResult };
 }
 
 // ─── Batch Orchestrator ─────────────────────────────────────────────────────
@@ -477,15 +563,22 @@ async function runBatch() {
   let files;
   try {
     if (singleFile) {
-      const fullPath = path.join(CONFIG.inputDir, singleFile);
-      if (!fs.existsSync(fullPath)) {
-        console.error(`❌ File not found: ${fullPath}`);
-        process.exit(1);
+      if (CONFIG.useGoogleDrive) {
+        // Single file mode with Google Drive - just pass the filename
+        // The file will be fetched in readInputFiles
+        files = [singleFile];
+        console.log(`\n🎯 Single file mode (Google Drive): ${singleFile}`);
+      } else {
+        const fullPath = path.join(CONFIG.inputDir, singleFile);
+        if (!fs.existsSync(fullPath)) {
+          console.error(`❌ File not found: ${fullPath}`);
+          process.exit(1);
+        }
+        files = [singleFile];
+        console.log(`\n🎯 Single file mode: ${singleFile}`);
       }
-      files = [singleFile];
-      console.log(`\n🎯 Single file mode: ${singleFile}`);
     } else {
-      files = readInputFiles(CONFIG.inputDir);
+      files = await readInputFiles(CONFIG.inputDir);
 
       if (CONFIG.batchSize > 0 && files.length > CONFIG.batchSize) {
         console.log(`📦 Batch size limit: processing ${CONFIG.batchSize} of ${files.length} files`);
@@ -499,8 +592,18 @@ async function runBatch() {
     process.exit(1);
   }
 
-  console.log(`📂 Input:  ${path.resolve(CONFIG.inputDir)}`);
-  console.log(`📤 SB:     ${path.resolve(CONFIG.outputSbDir)}`);
+  // ── Handle Google Drive setup if enabled ────────────────────────────
+  if (CONFIG.useGoogleDrive) {
+    if (!CONFIG.googleInputFolderId) {
+      console.error('❌ GOOGLE_INPUT_FOLDER_ID not set. Set USE_GOOGLE_DRIVE=false or provide a folder ID.');
+      process.exit(1);
+    }
+    console.log(`📂 Input:  Google Drive folder (${CONFIG.googleInputFolderId})`);
+    console.log(`📤 SB:     Google Drive folder (${CONFIG.googleOutputFolderId || 'not set, using local'}), Local: ${path.resolve(CONFIG.outputSbDir)}`);
+  } else {
+    console.log(`📂 Input:  ${path.resolve(CONFIG.inputDir)}`);
+    console.log(`📤 SB:     ${path.resolve(CONFIG.outputSbDir)}`);
+  }
   console.log('');
 
   // ── Progress bar ───────────────────────────────────────────────────
@@ -524,9 +627,12 @@ async function runBatch() {
   progressBar.start();
 
   for (let i = 0; i < files.length; i++) {
-    const fileName = files[i];
+    const fileEntry = files[i];
     const index = i + 1;
     const total = files.length;
+
+    // Extract file name for display (handles both local and Google Drive files)
+    const fileName = typeof fileEntry === 'string' ? fileEntry : fileEntry.fileName;
 
     console.log(`\n${'═'.repeat(60)}`);
     console.log(`  [${index}/${total}] Processing: ${fileName}`);
@@ -550,7 +656,7 @@ async function runBatch() {
     // ── Process the file ─────────────────────────────────────────────
     const fileStart = Date.now();
     try {
-      const result = await processFile(page, fileName, CONFIG);
+      const result = await processFile(page, fileEntry, CONFIG);
       const duration = ((Date.now() - fileStart) / 1000).toFixed(1);
 
       if (result.success) {

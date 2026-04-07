@@ -23,11 +23,60 @@ const autoRunPlugin = () => ({
     server.middlewares.use('/api/bulk-compare', async (req: any, res: any) => {
       try {
         const { compareBulk } = await import(path.resolve(__dirname, 'CHA_Export/SB_compare.js'));
-        // Fallback to output_sb and input_sb or whatever defaults
+        const { initGoogleDrive } = await import(path.resolve(__dirname, 'CHA_Export/google_drive.js'));
+
         const dirA = path.resolve(__dirname, 'CHA_Export/input_sb');
         const dirB = path.resolve(__dirname, 'CHA_Export/output_sb');
         const specPath = path.resolve(__dirname, 'public/SB_Tables.xlsx');
-        
+
+        // Ensure local directories exist
+        const fs = await import('fs');
+        if (!fs.existsSync(dirA)) fs.mkdirSync(dirA, { recursive: true });
+        if (!fs.existsSync(dirB)) fs.mkdirSync(dirB, { recursive: true });
+
+        // Check if Google Drive is enabled
+        const dotenv = await import('dotenv');
+        dotenv.config({ path: path.resolve(__dirname, '.env') });
+
+        if (process.env.USE_GOOGLE_DRIVE === 'true') {
+          console.log('📂 Fetching .sb files from Google Drive for comparison...');
+          const driveClient = await initGoogleDrive();
+
+          // Fetch input_sb files from Drive folder
+          const inputSbFolderId = process.env.GOOGLE_INPUT_SB_FOLDER_ID;
+          if (inputSbFolderId) {
+            const inputFiles = await driveClient.listFiles(inputSbFolderId);
+            const sbFiles = inputFiles.filter((f: any) => f.name.endsWith('.sb') || f.name.endsWith('.txt'));
+            console.log(`   📥 Found ${sbFiles.length} input .sb file(s) in Google Drive`);
+            
+            // Clear local input_sb and download fresh copies
+            const existingLocal = fs.readdirSync(dirA);
+            for (const f of existingLocal) fs.unlinkSync(path.join(dirA, f));
+            
+            for (const file of sbFiles) {
+              const destPath = path.join(dirA, file.name);
+              await driveClient.downloadFile(file.id, destPath);
+            }
+          }
+
+          // Fetch output_sb files from Drive folder
+          const outputSbFolderId = process.env.GOOGLE_OUTPUT_FOLDER_ID;
+          if (outputSbFolderId) {
+            const outputFiles = await driveClient.listFiles(outputSbFolderId);
+            const sbFiles = outputFiles.filter((f: any) => f.name.endsWith('.sb') || f.name.endsWith('.txt'));
+            console.log(`   📥 Found ${sbFiles.length} output .sb file(s) in Google Drive`);
+            
+            // Clear local output_sb and download fresh copies
+            const existingLocal = fs.readdirSync(dirB);
+            for (const f of existingLocal) fs.unlinkSync(path.join(dirB, f));
+            
+            for (const file of sbFiles) {
+              const destPath = path.join(dirB, file.name);
+              await driveClient.downloadFile(file.id, destPath);
+            }
+          }
+        }
+
         const results = await compareBulk(dirA, dirB, specPath);
         
         res.setHeader('Content-Type', 'application/json');

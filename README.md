@@ -71,7 +71,8 @@ This repository provides three main comparison experiences:
 │   ├── Auto_export_xl.js       # Batch export automation (500+ files)
 │   ├── Xl_to_json.js           # Excel to JSON conversion
 │   ├── user_login.js           # Session management
-│   └── utils.js                # Shared utilities (retry, smartWait, etc.)
+│   ├── utils.js                # Shared utilities (retry, smartWait, etc.)
+│   └── google_drive.js         # Google Drive integration (optional)
 ├── public/
 │   └── SB_Tables.xlsx          # SB specification workbook
 ├── playwright.config.ts
@@ -246,6 +247,9 @@ node CHA_Export/Auto_export_xl.js
 # Single file mode
 node CHA_Export/Auto_export_xl.js --file=myfile.xlsx
 
+# Google Drive setup instructions
+node CHA_Export/Auto_export_xl.js --google-setup
+
 # Help
 node CHA_Export/Auto_export_xl.js --help
 ```
@@ -260,6 +264,34 @@ node CHA_Export/Auto_export_xl.js --help
 | `HEADLESS` | `false` | Run browser headless |
 | `UPLOAD_WAIT_MS` | 60000 | Pause after upload (ms) |
 | `BASE_URL` | - | Xemi portal base URL |
+
+### Google Drive Integration (Optional)
+
+To use Google Drive as input/output for your automation:
+
+1. **Create Google Cloud Project** and enable Google Drive API
+2. **Create OAuth 2.0 Credentials** (Desktop app type)
+3. **Download credentials** and save as `CHA_Export/client_secret.json`
+
+Set these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `USE_GOOGLE_DRIVE` | Set to `true` to enable Google Drive integration |
+| `GOOGLE_INPUT_FOLDER_ID` | Google Drive folder ID containing input Excel files |
+| `GOOGLE_OUTPUT_FOLDER_ID` | Google Drive folder ID for .sb output files |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (from credentials) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (from credentials) |
+
+**Setup command:**
+```bash
+node CHA_Export/Auto_export_xl.js --google-setup
+```
+
+**Features:**
+- Fetch Excel files from Google Drive automatically
+- Upload .sb output files back to Google Drive
+- Persistent token storage (first-time auth only)
 
 ### Automation Features
 

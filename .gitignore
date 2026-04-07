@@ -27,3 +27,8 @@ dist-ssr
 .session_cookies.json
 error_log.txt
 missing_fields_log.json
+
+# Google Drive credentials (NEVER commit these)
+.env
+CHA_Export/client_secret*.json
+CHA_Export/token.json
