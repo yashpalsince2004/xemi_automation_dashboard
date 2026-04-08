@@ -57,8 +57,6 @@ function loadSbSpecs(specPath) {
 
     const normName = normalizeTableName(sh);
     sbSpecs[normName] = fields;
-    if (normName === "ITEM") sbSpecs["ITEMS"] = fields;
-    if (normName === "ITEMS") sbSpecs["ITEM"] = fields;
   });
 
   return sbSpecs;
@@ -93,9 +91,6 @@ function parseSbFlat(text, specs) {
     }
   }
 
-  if (dataBySeg["ITEM"] && !dataBySeg["ITEMS"]) dataBySeg["ITEMS"] = dataBySeg["ITEM"];
-  if (dataBySeg["ITEMS"] && !dataBySeg["ITEM"]) dataBySeg["ITEM"] = dataBySeg["ITEMS"];
-
   return dataBySeg;
 }
 
@@ -103,22 +98,32 @@ function getDiffStatus(va, vb, s) {
   const a = norm(va);
   const b = norm(vb);
 
-  if (s.final === "M" && (!a || !b)) return "mandatory missing";
+  // 1. First, check if they match (ignoring typical formatting differences)
+  if (a === b) return null;
+  if (a.toLowerCase() === b.toLowerCase()) return null;
+  if (isNumber(a) && isNumber(b) && Number(a) === Number(b)) return null;
+  if (a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase()) return null;
+
+  // 2. If they don't match, or if we want to enforce schema validation on the values:
+  // (Note: If they matched exactly above, we assume it's correct as per the Golden file)
+  if (s.final === "M" && (a && !b)) return "mandatory missing";
   if (s.type === "N" && ((a && !isNumber(a)) || (b && !isNumber(b)))) return "type mismatch";
   if (s.len && ((a && a.length > s.len) || (b && b.length > s.len))) return "length exceeded";
   
-  if (a === b) return null;
-
-  // Ignore case differences
-  if (a.toLowerCase() === b.toLowerCase()) return null;
-
-  // Ignore leading zeros for numeric values
-  if (isNumber(a) && isNumber(b) && Number(a) === Number(b)) return null;
-
-  // Ignore multiple spaces differences
-  if (a.replace(/\s+/g, ' ').toLowerCase() === b.replace(/\s+/g, ' ').toLowerCase()) return null;
-
   return "value mismatch";
+}
+
+function getMatchScore(rowA, rowB, spec) {
+  let score = 0;
+  spec.forEach((colSpec, idx) => {
+    if (SKIP_COMPARE_FIELDS.has(norm(colSpec.cap).toUpperCase())) return;
+    const va = rowA[idx] ?? "";
+    const vb = rowB[idx] ?? "";
+    if (getDiffStatus(va, vb, colSpec) === null) {
+      score++;
+    }
+  });
+  return score;
 }
 
 export async function compareBulk(dirA, dirB, specPath) {
@@ -197,11 +202,85 @@ export async function compareBulk(dirA, dirB, specPath) {
         rowsB = rowsB.filter(r => norm(r[currencyIdx] || "").toUpperCase() !== 'INR');
       }
 
-      const maxRows = Math.max(rowsA.length, rowsB.length);
+      let availableB = [...rowsB];
+      let pairedA = [];
+      let pairedB = [];
 
+      // Pass 1: Pair rowsA with the best matching rowsB
+      rowsA.forEach((rA, origIdx) => {
+        let bestIdx = -1;
+        let bestScore = -1;
+
+        for (let i = 0; i < availableB.length; i++) {
+          let score = getMatchScore(rA, availableB[i], spec);
+          if (score > bestScore) {
+            bestScore = score;
+            bestIdx = i;
+          }
+        }
+
+        if (bestIdx !== -1) {
+          pairedA.push({ row: rA, origIdx });
+          pairedB.push(availableB[bestIdx]);
+          availableB.splice(bestIdx, 1);
+        } else {
+          pairedA.push({ row: rA, origIdx });
+          pairedB.push([]);
+        }
+      });
+
+      // Pass 2: Remaining rows in availableB are extra
+      for (let rB of availableB) {
+        pairedA.push({ row: [], origIdx: -1 });
+        pairedB.push(rB);
+      }
+
+      // Pass 3: Evaluate combinations
+      const maxRows = pairedA.length;
       for (let i = 0; i < maxRows; i++) {
-        const rowA = rowsA[i] || [];
-        const rowB = rowsB[i] || [];
+        const rowAConfig = pairedA[i];
+        const rowA = rowAConfig.row;
+        const rowB = pairedB[i];
+
+        const displayRowIdx = rowAConfig.origIdx !== -1 ? rowAConfig.origIdx + 1 : 'Extra';
+
+        if (!rowA || rowA.length === 0) {
+          hasError = true;
+          const rowData = {};
+          spec.forEach((colSpec, idx) => {
+            const v = rowB[idx] ?? "";
+            if (v) rowData[colSpec.cap] = v;
+          });
+          mismatches.push({
+            segment,
+            rowIdx: displayRowIdx,
+            field: 'Entire Row',
+            valA: 'Missing in Golden',
+            valB: 'Present in Generated',
+            issue: 'extra row',
+            rowData
+          });
+          continue;
+        }
+
+        if (!rowB || rowB.length === 0) {
+          hasError = true;
+          const rowData = {};
+          spec.forEach((colSpec, idx) => {
+            const v = rowA[idx] ?? "";
+            if (v) rowData[colSpec.cap] = v;
+          });
+          mismatches.push({
+            segment,
+            rowIdx: displayRowIdx,
+            field: 'Entire Row',
+            valA: 'Present in Golden',
+            valB: 'Missing in Generated',
+            issue: 'missing row',
+            rowData
+          });
+          continue;
+        }
 
         spec.forEach((colSpec, idx) => {
           if (SKIP_COMPARE_FIELDS.has(norm(colSpec.cap).toUpperCase())) return;
@@ -210,12 +289,12 @@ export async function compareBulk(dirA, dirB, specPath) {
           const vb = rowB[idx] ?? "";
 
           const status = getDiffStatus(va, vb, colSpec);
-          
+
           if (status) {
             hasError = true;
             mismatches.push({
               segment,
-              rowIdx: i + 1,
+              rowIdx: displayRowIdx,
               field: colSpec.cap,
               valA: va,
               valB: vb,

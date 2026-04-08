@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
-import type { ComparisonResult } from '@/lib/comparisonEngine';
+import type { ComparisonResult } from '@/lib/comparisonengine';
 
 interface Props {
   result: ComparisonResult;

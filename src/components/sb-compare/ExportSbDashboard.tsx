@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Download, Filter } from 'lucide-react';
+import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Download, Filter, Minus, Plus, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -15,11 +15,12 @@ import * as XLSX from 'xlsx';
 
 interface Mismatch {
   segment: string;
-  rowIdx: number;
+  rowIdx: number | string;
   field: string;
   valA: string;
   valB: string;
   issue: string;
+  rowData?: Record<string, string>;
 }
 
 interface CompareResult {
@@ -30,14 +31,24 @@ interface CompareResult {
 }
 
 const exportToExcel = (mismatches: Mismatch[], fileName: string) => {
-  const data = mismatches.map(m => ({
-    Segment: m.segment,
-    Row: m.rowIdx,
-    Field: m.field,
-    'Golden': m.valA,
-    'Generated': m.valB,
-    Issue: m.issue
-  }));
+  const data = mismatches.map(m => {
+    let rowDetails = '';
+    if (m.rowData && Object.keys(m.rowData).length > 0) {
+      rowDetails = Object.entries(m.rowData)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(' | ');
+    }
+
+    return {
+      Segment: m.segment,
+      Row: m.rowIdx,
+      Field: m.field || '-',
+      'Golden': m.valA || '-',
+      'Generated': m.valB || '-',
+      Issue: m.issue,
+      'Row Details': rowDetails
+    };
+  });
 
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
@@ -49,15 +60,75 @@ const exportToExcel = (mismatches: Mismatch[], fileName: string) => {
 const FILTER_OPTIONS = [
   "Mandatory Fields",
   "Job No/Date",
+  "Address",
   "CHA License Number",
   "Importer Exporter Code",
-  "Imp. Exp. Name",
-  "Imp. Exp. Address1",
-  "Imp. Exp. Address2",
-  "Imp. Exp. City",
-  "Imp. Exp. State",
-  "Imp. Exp. PIN"
+  "Name"
 ];
+
+function MismatchRowView({ m }: { m: Mismatch }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const isRowLevel = m.issue === 'missing row' || m.issue === 'extra row';
+  
+  return (
+    <>
+      <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+        <td className="px-4 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">{m.segment}</td>
+        <td className="px-4 py-2 text-slate-700 dark:text-slate-300">{m.rowIdx}</td>
+        <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{m.field || '-'}</td>
+        <td className="px-4 py-2 text-rose-600 bg-rose-50/50 dark:bg-rose-900/10 dark:text-rose-400">{m.valA || '-'}</td>
+        <td className="px-4 py-2 text-emerald-600 bg-emerald-50/50 dark:bg-emerald-900/10 dark:text-emerald-400">{m.valB || '-'}</td>
+        <td className="px-4 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
+              m.issue === 'missing row' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' :
+              m.issue === 'extra row' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+              'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+            }`}>
+              {m.issue}
+            </span>
+            {isRowLevel && m.rowData && Object.keys(m.rowData).length > 0 && (
+              <button 
+                onClick={() => setIsOpen(!isOpen)} 
+                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                aria-label="View row details"
+              >
+                <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {isOpen && isRowLevel && m.rowData && (
+        <tr>
+          <td colSpan={6} className="p-0 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-slate-50/50 dark:bg-slate-900/50 p-4 shadow-inner">
+              <h5 className="text-xs font-bold text-slate-500 uppercase mb-3 px-1">{m.issue === 'missing row' ? 'Missing Golden Row Details' : 'Extra Generated Row Details'}</h5>
+              <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="px-4 py-2.5 font-semibold text-slate-600 dark:text-slate-300">Field</th>
+                      <th className="px-4 py-2.5 font-semibold text-slate-600 dark:text-slate-300">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                    {Object.entries(m.rowData).map(([field, value]) => (
+                      <tr key={field} className="hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="px-4 py-2 font-medium text-slate-600 dark:text-slate-300 w-1/3 sm:w-1/4">{field}</td>
+                        <td className="px-4 py-2 text-slate-800 dark:text-slate-200 break-words">{value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export default function ExportSbDashboard() {
   const [results, setResults] = useState<CompareResult[]>([]);
@@ -104,9 +175,18 @@ export default function ExportSbDashboard() {
         
         if (!activeFilters['Mandatory Fields'] && m.issue?.toLowerCase() === 'mandatory missing') return false;
         if (!activeFilters['Job No/Date'] && (fieldNorm === 'job number' || fieldNorm === 'job date' || fieldNorm === 'job no' || fieldNorm === 'job no.')) return false;
+        if (!activeFilters['Address'] && (
+          fieldNorm.includes('address') || 
+          fieldNorm.includes('city') || 
+          fieldNorm.includes('state') || 
+          fieldNorm.includes('pin') || 
+          fieldNorm.includes('zip') || 
+          fieldNorm.includes('country')
+        )) return false;
+        if (!activeFilters['Name'] && fieldNorm.includes('name')) return false;
         
         for (const [filterName, isEnabled] of Object.entries(activeFilters)) {
-          if (filterName === 'Mandatory Fields' || filterName === 'Job No/Date') continue;
+          if (filterName === 'Mandatory Fields' || filterName === 'Job No/Date' || filterName === 'Address' || filterName === 'Name') continue;
           
           if (!isEnabled && m.field?.trim().toLowerCase() === filterName.toLowerCase()) {
             return false;
@@ -271,43 +351,39 @@ export default function ExportSbDashboard() {
                     <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                       <div className="overflow-hidden">
                         <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Mismatched Values</h4>
-                            <Button onClick={() => exportToExcel(res.mismatches, res.fileName)} size="sm" variant="outline" className="gap-2">
-                              <Download className="h-4 w-4" />
-                              Export to Excel
-                            </Button>
-                          </div>
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
-                        <table className="w-full text-sm text-left">
-                          <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Segment</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Row</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Field</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Golden</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Generated</th>
-                              <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Issue</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {res.mismatches.map((m, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                <td className="px-4 py-2 font-mono text-xs">{m.segment}</td>
-                                <td className="px-4 py-2">{m.rowIdx}</td>
-                                <td className="px-4 py-2 font-medium">{m.field}</td>
-                                <td className="px-4 py-2 text-rose-600 bg-rose-50/30">{m.valA || '-'}</td>
-                                <td className="px-4 py-2 text-emerald-600 bg-emerald-50/30">{m.valB || '-'}</td>
-                                <td className="px-4 py-2">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 capitalize">
-                                    {m.issue}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          
+                          {/* Main Mismatches Table */}
+                          {res.mismatches.length > 0 && (
+                            <>
+                              <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Mismatched Values</h4>
+                                <Button onClick={() => exportToExcel(res.mismatches, res.fileName)} size="sm" variant="outline" className="gap-2">
+                                  <Download className="h-4 w-4" />
+                                  Export to Excel
+                                </Button>
+                              </div>
+                              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+                                <table className="w-full text-sm text-left">
+                                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                                    <tr>
+                                      <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Segment</th>
+                                      <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Row</th>
+                                      <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Field</th>
+                                      <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Golden</th>
+                                      <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300">Generated</th>
+                                      <th className="px-4 py-3 font-semibold text-slate-600 dark:text-slate-300 w-40">Issue</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {res.mismatches.map((m, idx) => (
+                                      <MismatchRowView key={idx} m={m} />
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </>
+                          )}
+
                         </div>
                       </div>
                     </div>

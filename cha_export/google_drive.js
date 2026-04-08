@@ -109,7 +109,7 @@ class GoogleDriveClient {
         '1. Go to https://console.cloud.google.com/\n' +
         '2. Create a project → API & Services → Credentials\n' +
         '3. Create "Desktop app" credentials → Download JSON\n' +
-        '4. Save as CHA_Export/client_secret.json'
+        '4. Save as cha_export/client_secret.json'
       );
     }
 
@@ -467,7 +467,7 @@ ${'═'.repeat(60)}
    - Click "Create Credentials" → "OAuth client ID"
    - Application type: "Desktop app"
    - Download the JSON file
-   - Save as: CHA_Export/client_secret.json
+   - Save as: cha_export/client_secret.json
 
 4️⃣  Set Environment Variables (.env)
    GOOGLE_CLIENT_ID=<from client_secret.json>

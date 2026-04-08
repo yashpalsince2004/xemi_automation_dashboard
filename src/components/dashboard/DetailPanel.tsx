@@ -3,8 +3,8 @@ import { ChevronRight, Download } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { ComparisonResult, MismatchDetail } from '@/lib/comparisonEngine';
-import { exportDiffCSV } from '@/lib/comparisonEngine';
+import type { ComparisonResult, MismatchDetail } from '@/lib/comparisonengine';
+import { exportDiffCSV } from '@/lib/comparisonengine';
 
 interface Props {
   result: ComparisonResult;

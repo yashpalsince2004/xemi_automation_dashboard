@@ -8,7 +8,7 @@ const autoRunPlugin = () => ({
   name: 'auto-run-plugin',
   configureServer(server: any) {
     server.middlewares.use('/api/run-auto', (req: any, res: any) => {
-      exec('node Auto_export_xl.js', { cwd: path.resolve(__dirname, 'CHA_Export') }, (err, stdout, stderr) => {
+      exec('node auto_export_xl.js', { cwd: path.resolve(__dirname, 'cha_export') }, (err, stdout, stderr) => {
         if (err) {
           console.error(err);
           res.statusCode = 500;
@@ -22,11 +22,11 @@ const autoRunPlugin = () => ({
 
     server.middlewares.use('/api/bulk-compare', async (req: any, res: any) => {
       try {
-        const { compareBulk } = await import(path.resolve(__dirname, 'CHA_Export/SB_compare.js'));
-        const { initGoogleDrive } = await import(path.resolve(__dirname, 'CHA_Export/google_drive.js'));
+        const { compareBulk } = await import(path.resolve(__dirname, 'cha_export/sb_compare.js'));
+        const { initGoogleDrive } = await import(path.resolve(__dirname, 'cha_export/google_drive.js'));
 
-        const dirA = path.resolve(__dirname, 'CHA_Export/input_sb');
-        const dirB = path.resolve(__dirname, 'CHA_Export/output_sb');
+        const dirA = path.resolve(__dirname, 'cha_export/input_sb');
+        const dirB = path.resolve(__dirname, 'cha_export/output_sb');
         const specPath = path.resolve(__dirname, 'public/SB_Tables.xlsx');
 
         // Ensure local directories exist
@@ -58,8 +58,8 @@ const autoRunPlugin = () => ({
               await driveClient.downloadFile(file.id, destPath);
             }
           }
-
-          // Fetch output_sb files from Drive folder
+          
+          // Force Vite backend reload to clear cached imports
           const outputSbFolderId = process.env.GOOGLE_OUTPUT_FOLDER_ID;
           if (outputSbFolderId) {
             const outputFiles = await driveClient.listFiles(outputSbFolderId);

@@ -2,17 +2,17 @@ import { useState, useCallback, useRef } from 'react';
 import { FileSearch, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import DashboardHeader from '@/components/dashboard/DashboardHeader';
-import UploadZone from '@/components/dashboard/UploadZone';
-import KeyColumnSelector from '@/components/dashboard/KeyColumnSelector';
-import SummaryFunnel from '@/components/dashboard/SummaryFunnel';
-import DetailPanel from '@/components/dashboard/DetailPanel';
-import AnalyticsWidgets from '@/components/dashboard/AnalyticsWidgets';
-import SbComparison from '@/components/sb-compare/SbComparison';
-import ExportSbDashboard from '@/components/sb-compare/ExportSbDashboard';
-import type { ParsedFile } from '@/lib/fileParser';
-import type { ComparisonResult } from '@/lib/comparisonEngine';
-import { compareFiles } from '@/lib/comparisonEngine';
+import DashboardHeader from '@/components/dashboard/dashboardheader';
+import UploadZone from '@/components/dashboard/uploadzone';
+import KeyColumnSelector from '@/components/dashboard/keycolumnselector';
+import SummaryFunnel from '@/components/dashboard/summaryfunnel';
+import DetailPanel from '@/components/dashboard/detailpanel';
+import AnalyticsWidgets from '@/components/dashboard/analyticswidgets';
+import SbComparison from '@/components/sb-compare/sbcomparison';
+import ExportSbDashboard from '@/components/sb-compare/exportsbdashboard';
+import type { ParsedFile } from '@/lib/fileparser';
+import type { ComparisonResult } from '@/lib/comparisonengine';
+import { compareFiles } from '@/lib/comparisonengine';
 
 export default function Index() {
   const [fileA, setFileA] = useState<ParsedFile | null>(null);

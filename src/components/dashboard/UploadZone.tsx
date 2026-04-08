@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
-import type { ParsedFile } from '@/lib/fileParser';
-import { parseFile } from '@/lib/fileParser';
+import type { ParsedFile } from '@/lib/fileparser';
+import { parseFile } from '@/lib/fileparser';
 
 interface Props {
   onFilesLoaded: (a: ParsedFile, b: ParsedFile) => void;

@@ -1,4 +1,4 @@
-import type { ParsedFile } from './fileParser';
+import type { ParsedFile } from './fileparser';
 
 export interface MismatchDetail {
   rowKey: string;

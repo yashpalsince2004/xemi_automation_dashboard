@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  Auto_export_xl.js — Batch CHA Export Automation (v2)
+ *  auto_export_xl.js — Batch CHA Export Automation (v2)
  * ============================================================================
  *
  *  Automates the Xemi CHA Export workflow for up to 500+ Excel files.
@@ -14,9 +14,9 @@
  *   - Comprehensive summary with login, missing field, and error stats
  *
  *  Usage:
- *    node Auto_export_xl.js                      # Batch — all files
- *    node Auto_export_xl.js --file=myfile.xlsx    # Single file
- *    node Auto_export_xl.js --help                # Show usage
+ *    node auto_export_xl.js                      # Batch — all files
+ *    node auto_export_xl.js --file=myfile.xlsx    # Single file
+ *    node auto_export_xl.js --help                # Show usage
  *
  *  Environment Variables (all optional, set in ../.env):
  *    BATCH_SIZE       — Max files per run (0 = unlimited, default: 0)
@@ -31,7 +31,7 @@
 import fs from 'fs';
 import path from 'path';
 import { login, ensureSession } from './user_login.js';
-import { convertSingleExcelToJson } from './Xl_to_json.js';
+import { convertSingleExcelToJson } from './xl_to_json.js';
 import {
   retry,
   safeClick,
@@ -85,8 +85,8 @@ function parseCLIArgs() {
   if (process.argv.includes('--help')) {
     console.log(`
 Usage:
-  node Auto_export_xl.js                   Batch mode — process all Excel files
-  node Auto_export_xl.js --file=abc.xlsx   Single file mode
+  node auto_export_xl.js                   Batch mode — process all Excel files
+  node auto_export_xl.js --file=abc.xlsx   Single file mode
 
 Environment Variables:
   BATCH_SIZE              Max files per run (0 = all)
@@ -102,7 +102,7 @@ Environment Variables:
   GOOGLE_CLIENT_ID        Google OAuth client ID
   GOOGLE_CLIENT_SECRET    Google OAuth client secret
 
-Run 'node Auto_export_xl.js --google-setup' for Google Drive setup instructions.
+Run 'node auto_export_xl.js --google-setup' for Google Drive setup instructions.
     `);
     process.exit(0);
   }

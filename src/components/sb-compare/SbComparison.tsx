@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { loadSbSpecs, parseSbFlat, generateExportIssues } from '@/lib/sbParser';
-import type { SbSpecs, SbData } from '@/lib/sbParser';
-import SbUploadZone from './SbUploadZone';
-import SbGrid from './SbGrid';
+import { loadSbSpecs, parseSbFlat, generateExportIssues } from '@/lib/sbparser';
+import type { SbSpecs, SbData } from '@/lib/sbparser';
+import SbUploadZone from './sbuploadzone';
+import SbGrid from './sbgrid';
 import { toast } from 'sonner';
 
 export default function SbComparison() {

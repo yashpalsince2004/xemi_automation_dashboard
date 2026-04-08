@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ComparisonResult } from '@/lib/comparisonEngine';
+import type { ComparisonResult } from '@/lib/comparisonengine';
 
 interface Props {
   result: ComparisonResult;

@@ -1,6 +1,26 @@
 import { useMemo } from 'react';
-import type { FieldSpec } from '@/lib/sbParser';
-import { getDiffStatus, norm, SKIP_COMPARE_FIELDS } from '@/lib/sbParser';
+import type { FieldSpec } from '@/lib/sbparser';
+import { getDiffStatus, norm, SKIP_COMPARE_FIELDS } from '@/lib/sbparser';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+
+
+
+function getMatchScore(rowA: string[], rowB: string[], spec: FieldSpec[]) {
+  let score = 0;
+  spec.forEach((colSpec, idx) => {
+    if (SKIP_COMPARE_FIELDS.has(norm(colSpec.cap).toUpperCase())) return;
+    const va = rowA[idx] ?? "";
+    const vb = rowB[idx] ?? "";
+    if (getDiffStatus(va, vb, colSpec) === "") { // In frontend logic, getDiffStatus returns string, empty string means no diff for the purpose of basic comparison, wait but diff also checks exact match
+      // Actually, frontend getDiffStatus returns string enum ('mandatory', 'datatype', 'length', 'compare', '')
+      // Lets do a safer match check:
+      if (norm(va) === norm(vb) || getDiffStatus(va, vb, colSpec) === "") {
+        score++;
+      }
+    }
+  });
+  return score;
+}
 
 // Currency field index in EXCHANGE table (position 6 in the flat file format)
 const CURRENCY_FIELD_INDEX = 6;
@@ -48,7 +68,43 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
     });
   }, [tableName, rowsB, spec]);
 
-  const maxRows = Math.max(filteredRowsA.length, filteredRowsB.length);
+  
+  const { pairedA, pairedB, missingRows, extraRows } = useMemo(() => {
+    let availableB = [...filteredRowsB];
+    let pairedA = [];
+    let pairedB = [];
+    let missingRows = [];
+
+    // Pass 1: Pair rowsA with the best matching rowsB
+    filteredRowsA.forEach((rA, origIdx) => {
+      let bestIdx = -1;
+      let bestScore = -1;
+
+      for (let i = 0; i < availableB.length; i++) {
+        let score = getMatchScore(rA, availableB[i], spec);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx !== -1 && bestScore > 0) { // Assume >0 is enough to link
+        pairedA.push(rA);
+        pairedB.push(availableB[bestIdx]);
+        availableB.splice(bestIdx, 1);
+      } else {
+        missingRows.push({ row: rA, origIdx });
+      }
+    });
+
+    // Pass 2: Remaining rows in availableB are extra
+    let extraRows = availableB.map(rB => ({ row: rB }));
+
+    return { pairedA, pairedB, missingRows, extraRows };
+  }, [filteredRowsA, filteredRowsB, spec]);
+
+  const maxRows = pairedA.length;
+
 
   // Derive the table cells for each row/column
   const gridRows = useMemo(() => {
@@ -74,8 +130,8 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
       }
 
       for (let r = 0; r < maxRows; r++) {
-        const va = filteredRowsA[r]?.[c] ?? "";
-        const vb = filteredRowsB[r]?.[c] ?? "";
+        const va = pairedA[r]?.[c] ?? "";
+        const vb = pairedB[r]?.[c] ?? "";
 
         let status = getDiffStatus(va, vb, fieldSpec);
         let hasDiff = status !== "" || norm(va) !== norm(vb);
@@ -97,7 +153,7 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
       result.push({ cap, cells });
     }
     return result;
-  }, [spec, filteredRowsA, rowsB, showIssuesOnly, includeJobInfo, maxRows]);
+  }, [spec, pairedA, pairedB, showIssuesOnly, includeJobInfo, maxRows]);
 
   const getCellClass = (status: string, diff: boolean) => {
     let base = "border border-border px-3 py-2 whitespace-nowrap text-sm ";
@@ -109,7 +165,65 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
   };
 
   return (
-    <div className="w-full overflow-auto max-h-[70vh] rounded-md border border-border bg-card">
+    <div>
+      {missingRows.length > 0 && (
+        <div className="mb-6 p-4 rounded-md border border-red-200 bg-red-50/50">
+          <h4 className="text-red-800 font-semibold mb-2">Missing in Generated ({missingRows.length} items)</h4>
+          <Accordion type="single" collapsible className="w-full">
+            {missingRows.map((m, idx) => (
+              <AccordionItem key={idx} value={"missing-" + idx} className="border-red-200">
+                <AccordionTrigger className="text-sm font-medium text-red-700 py-2 hover:no-underline hover:bg-red-100/50 px-2 rounded">
+                  View Missing {tableName} Item {m.origIdx + 1}
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 px-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {spec.map((colSpec, cIdx) => {
+                      const val = m.row[cIdx];
+                      if (!val) return null;
+                      return (
+                        <div key={cIdx} className="text-xs bg-white rounded p-2 shadow-sm border border-red-100">
+                          <span className="font-semibold text-red-900/70 block mb-0.5">{norm(colSpec.cap)}</span>
+                          <span className="text-slate-800 break-words">{val}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
+      )}
+
+      {extraRows.length > 0 && (
+        <div className="mb-6 p-4 rounded-md border border-orange-200 bg-orange-50/50">
+          <h4 className="text-orange-800 font-semibold mb-2">Extra in Generated ({extraRows.length} items)</h4>
+          <Accordion type="single" collapsible className="w-full">
+            {extraRows.map((e, idx) => (
+              <AccordionItem key={idx} value={"extra-" + idx} className="border-orange-200">
+                <AccordionTrigger className="text-sm font-medium text-orange-700 py-2 hover:no-underline hover:bg-orange-100/50 px-2 rounded">
+                  View Extra {tableName} Item {idx + 1}
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 px-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {spec.map((colSpec, cIdx) => {
+                      const val = e.row[cIdx];
+                      if (!val) return null;
+                      return (
+                        <div key={cIdx} className="text-xs bg-white rounded p-2 shadow-sm border border-orange-100">
+                          <span className="font-semibold text-orange-900/70 block mb-0.5">{norm(colSpec.cap)}</span>
+                          <span className="text-slate-800 break-words">{val}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
+      )}
+<div className="w-full overflow-auto max-h-[70vh] rounded-md border border-border bg-card">
       <table className="w-max border-collapse">
         <thead className="sticky top-0 z-30 bg-muted">
           <tr>
@@ -147,6 +261,7 @@ export default function SbGrid({ spec, rowsA, rowsB, showIssuesOnly, includeJobI
           )}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
