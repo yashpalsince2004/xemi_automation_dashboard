@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Download, Filter, Minus, Plus, ChevronRight } from 'lucide-react';
+import { Play, Search, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Download, Filter, Minus, Plus, ChevronRight, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -143,6 +143,8 @@ export default function ExportSbDashboard() {
   );
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  const [isAutomationRunning, setIsAutomationRunning] = useState(false);
+
   const runComparison = async () => {
     setIsLoading(true);
     setResults([]);
@@ -156,6 +158,23 @@ export default function ExportSbDashboard() {
       toast.error('Failed to run export comparison: ' + err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const runAutomation = async () => {
+    setIsAutomationRunning(true);
+    try {
+      const res = await fetch('/api/run-auto');
+      const json = await res.json();
+      if (json.error) {
+        toast.error(json.error);
+      } else {
+        toast.success('Export automation started! Check the progress widget.');
+      }
+    } catch (err: any) {
+      toast.error('Failed to start automation: ' + err.message);
+    } finally {
+      setIsAutomationRunning(false);
     }
   };
 
@@ -240,10 +259,16 @@ export default function ExportSbDashboard() {
             <h2 className="text-3xl font-extrabold tracking-tight">Export Comparison</h2>
             <p className="text-muted-foreground mt-1">Analyze up to 500 sets of shipping bills instantly.</p>
           </div>
-          <Button onClick={runComparison} disabled={isLoading} size="lg" className="rounded-full px-8 gap-2 shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
-            {isLoading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Play className="h-4 w-4" />}
-            {isLoading ? 'Processing...' : 'Run Export Comparison'}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button onClick={runAutomation} disabled={isAutomationRunning} size="lg" variant="outline" className="rounded-full px-6 gap-2 bg-white/50 dark:bg-slate-900/50 hover:scale-105 transition-transform border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400">
+              {isAutomationRunning ? <div className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Rocket className="h-4 w-4" />}
+              {isAutomationRunning ? 'Running Automation...' : 'Run Export Automation'}
+            </Button>
+            <Button onClick={runComparison} disabled={isLoading} size="lg" className="rounded-full px-8 gap-2 shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+              {isLoading ? <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" /> : <Play className="h-4 w-4" />}
+              {isLoading ? 'Processing...' : 'Run Export Comparison'}
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">

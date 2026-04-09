@@ -10,6 +10,7 @@ import DetailPanel from '@/components/dashboard/detailpanel';
 import AnalyticsWidgets from '@/components/dashboard/analyticswidgets';
 import SbComparison from '@/components/sb-compare/sbcomparison';
 import ExportSbDashboard from '@/components/sb-compare/exportsbdashboard';
+import AutomationProgress from '@/components/automation-progress';
 import type { ParsedFile } from '@/lib/fileparser';
 import type { ComparisonResult } from '@/lib/comparisonengine';
 import { compareFiles } from '@/lib/comparisonengine';
@@ -44,6 +45,7 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AutomationProgress />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 space-y-6">
         <DashboardHeader
           fileA={fileA}

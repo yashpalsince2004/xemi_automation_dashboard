@@ -37,7 +37,7 @@ This repository provides three main comparison experiences:
 | Charts | Recharts |
 | File Parsing | xlsx (SheetJS) |
 | Testing | Vitest, Testing Library |
-| Automation | Node.js + Playwright (`cha_export/`) |
+| Automation | Node.js + Playwright (`automation/cha_export/`) |
 
 ---
 
@@ -67,12 +67,16 @@ This repository provides three main comparison experiences:
 │   ├── pages/
 │   │   └── Index.tsx           # Main app entry page
 │   └── test/                   # Vitest tests
-├── cha_export/                 # Playwright automation scripts
-│   ├── auto_export_xl.js       # Batch export automation (500+ files)
-│   ├── xl_to_json.js           # Excel to JSON conversion
-│   ├── user_login.js           # Session management
-│   ├── utils.js                # Shared utilities (retry, smartWait, etc.)
-│   └── google_drive.js         # Google Drive integration (optional)
+├── automation/                 # Automation scripts and workflows
+│   ├── cha_export/             # Playwright automation for exports
+│   │   ├── auto_export_xl.js   # Batch export automation (500+ files)
+│   │   ├── xl_to_json.js       # Excel to JSON conversion
+│   │   ├── user_login.js       # Session management
+│   │   ├── utils.js            # Shared utilities (retry, smartWait, etc.)
+│   │   └── google_drive.js     # Google Drive integration (optional)
+│   └── cha_import/             # Playwright automation for imports
+│       ├── auto_import_xl.js   # Batch import automation
+│       └── ...
 ├── public/
 │   └── SB_Tables.xlsx          # SB specification workbook
 ├── playwright.config.ts
@@ -242,16 +246,16 @@ The SB parser handles flat file format with segment tables:
 
 ```bash
 # Batch mode (all files in input directory)
-node cha_export/auto_export_xl.js
+node automation/cha_export/auto_export_xl.js
 
 # Single file mode
-node cha_export/auto_export_xl.js --file=myfile.xlsx
+node automation/cha_export/auto_export_xl.js --file=myfile.xlsx
 
 # Google Drive setup instructions
-node cha_export/auto_export_xl.js --google-setup
+node automation/cha_export/auto_export_xl.js --google-setup
 
 # Help
-node cha_export/auto_export_xl.js --help
+node automation/cha_export/auto_export_xl.js --help
 ```
 
 ### Environment Variables
@@ -271,7 +275,7 @@ To use Google Drive as input/output for your automation:
 
 1. **Create Google Cloud Project** and enable Google Drive API
 2. **Create OAuth 2.0 Credentials** (Desktop app type)
-3. **Download credentials** and save as `cha_export/client_secret.json`
+3. **Download credentials** and save as `automation/cha_export/client_secret.json`
 
 Set these environment variables:
 
@@ -285,7 +289,7 @@ Set these environment variables:
 
 **Setup command:**
 ```bash
-node cha_export/auto_export_xl.js --google-setup
+node automation/cha_export/auto_export_xl.js --google-setup
 ```
 
 **Features:**

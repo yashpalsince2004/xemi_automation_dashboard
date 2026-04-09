@@ -23,12 +23,21 @@ dist-ssr
 *.sln
 *.sw?
 
-# CHA Export automation
+# CHA Export automation secrets & data
 .session_cookies.json
+**/token.json
+**/client_secret.json
+**/.session_cookies.json
+**/input/
+**/input_excel/
+**/input_json/
+**/input_sb/
+**/output/
+**/output_sb/
+**/node_modules/
+**/.git/
+**/.git_backup/
 error_log.txt
+error_log.json
 missing_fields_log.json
-
-# Google Drive credentials (NEVER commit these)
 .env
-CHA_Export/client_secret*.json
-CHA_Export/token.json
